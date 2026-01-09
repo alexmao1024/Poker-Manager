@@ -1,0 +1,14 @@
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+node_modules/
+miniprogram_npm/
+cloudfunctions/**/node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+project.private.config.json
+.env*
