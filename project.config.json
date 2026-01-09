@@ -45,7 +45,7 @@
     "disableSWC": true
   },
   "appid": "wx5313a6f0362cfc3b",
-  "projectname": "quickstart-wx-cloud",
+  "projectname": "chip-scoreboard",
   "libVersion": "3.13.1",
   "cloudfunctionTemplateRoot": "cloudfunctionTemplate/",
   "condition": {

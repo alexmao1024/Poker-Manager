@@ -1,0 +1,148 @@
+.header {
+  margin-bottom: 30rpx;
+}
+
+.avatar-wrap {
+  width: 84rpx;
+  height: 84rpx;
+}
+
+.avatar {
+  width: 84rpx;
+  height: 84rpx;
+  border-radius: 50%;
+  border: 2rpx solid rgba(227, 197, 116, 0.4);
+  background: rgba(15, 24, 20, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28rpx;
+}
+
+.avatar-placeholder {
+  color: var(--ink-200);
+}
+
+.profile-actions {
+  margin-top: 18rpx;
+  display: flex;
+  gap: 16rpx;
+}
+
+.profile-actions .btn {
+  flex: 1;
+}
+
+.quick {
+  margin-bottom: 26rpx;
+}
+
+.quick-head {
+  margin-bottom: 16rpx;
+}
+
+.quick-title {
+  margin-left: 14rpx;
+  font-size: 30rpx;
+  letter-spacing: 1rpx;
+}
+
+.quick-actions {
+  display: flex;
+  gap: 16rpx;
+}
+
+.quick-actions .btn {
+  flex: 1;
+}
+
+.form {
+  margin-top: 20rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+}
+
+.form-label {
+  color: var(--ink-400);
+  font-size: 22rpx;
+  letter-spacing: 1rpx;
+}
+
+.form-input {
+  border: 1px solid rgba(227, 197, 116, 0.25);
+  border-radius: 14rpx;
+  padding: 16rpx 18rpx;
+  background: rgba(9, 14, 12, 0.55);
+  color: var(--ink-100);
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12rpx;
+}
+
+.form-submit {
+  margin-top: 6rpx;
+}
+
+.tables {
+  margin-top: 12rpx;
+}
+
+.section-title {
+  font-size: 30rpx;
+  letter-spacing: 1rpx;
+}
+
+.table-head {
+  margin-bottom: 16rpx;
+}
+
+.empty {
+  color: var(--ink-400);
+  font-size: 24rpx;
+  padding: 10rpx 0 4rpx;
+}
+
+.table-card {
+  padding: 20rpx;
+  border-radius: 18rpx;
+  background: linear-gradient(135deg, rgba(16, 26, 21, 0.95), rgba(24, 48, 36, 0.8));
+  border: 1px solid rgba(227, 197, 116, 0.15);
+  margin-top: 16rpx;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.table-name {
+  font-size: 28rpx;
+  color: var(--ink-100);
+}
+
+.table-code {
+  color: var(--accent-2);
+  font-size: 22rpx;
+}
+
+.table-meta {
+  margin-top: 12rpx;
+  display: flex;
+  justify-content: space-between;
+  color: var(--ink-400);
+  font-size: 22rpx;
+}
+
+.table-foot {
+  margin-top: 10rpx;
+  display: flex;
+  justify-content: space-between;
+  color: var(--ink-400);
+  font-size: 20rpx;
+}

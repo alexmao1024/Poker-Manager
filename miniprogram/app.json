@@ -1,14 +1,15 @@
 {
   "pages": [
-    "pages/index/index",
-    "pages/example/index"
+    "pages/home/home",
+    "pages/table/table",
+    "pages/summary/summary"
   ],
   "window": {
-    "backgroundColor": "#F6F6F6",
+    "backgroundColor": "#0f1814",
     "backgroundTextStyle": "light",
-    "navigationBarBackgroundColor": "#F6F6F6",
-    "navigationBarTitleText": "云开发 QuickStart",
-    "navigationBarTextStyle": "black"
+    "navigationBarBackgroundColor": "#0f1814",
+    "navigationBarTitleText": "筹码计分",
+    "navigationBarTextStyle": "white"
   },
   "sitemapLocation": "sitemap.json",
   "style": "v2",

@@ -1,0 +1,97 @@
+<view class="screen">
+  <view class="stack">
+    <view class="header fade-in">
+      <view class="row">
+        <view>
+          <view class="title">筹码计分</view>
+          <view class="subtitle">线下德州房间 · 筹码记分</view>
+        </view>
+        <view class="avatar-wrap">
+          <image wx:if="{{profile.avatar}}" class="avatar" src="{{profile.avatar}}" mode="aspectFill" />
+          <view wx:else class="avatar avatar-placeholder">{{profileInitial}}</view>
+        </view>
+      </view>
+      <view class="profile-actions">
+        <button class="btn btn-ghost" bindtap="onSyncProfile">微信头像</button>
+        <button class="btn btn-ghost" bindtap="onEditName">昵称</button>
+      </view>
+    </view>
+
+    <view class="panel quick fade-in delay-1">
+      <view class="row quick-head">
+        <view class="row">
+          <view class="chip"></view>
+          <view class="quick-title">快速开房</view>
+        </view>
+        <view class="tag">本地草稿</view>
+      </view>
+      <view class="quick-actions">
+        <button class="btn btn-primary" bindtap="toggleCreate">
+          {{showCreate ? "收起表单" : "新建房间"}}
+        </button>
+        <button class="btn btn-ghost" bindtap="toggleJoin">
+          {{showJoin ? "收起加入" : "加入房间"}}
+        </button>
+      </view>
+
+      <view wx:if="{{showCreate}}" class="form">
+        <view class="form-row">
+          <text class="form-label">玩家昵称</text>
+          <input class="form-input" placeholder="用逗号分隔，比如 阿晨,小雨,Leo" value="{{form.playersText}}" bindinput="onInputPlayers" />
+        </view>
+        <view class="form-grid">
+          <view class="form-row">
+            <text class="form-label">起始积分</text>
+            <input class="form-input" type="number" value="{{form.stack}}" bindinput="onInputStack" />
+          </view>
+          <view class="form-row">
+            <text class="form-label">小盲积分</text>
+            <input class="form-input" type="number" value="{{form.sb}}" bindinput="onInputSb" />
+          </view>
+          <view class="form-row">
+            <text class="form-label">大盲积分</text>
+            <input class="form-input" type="number" value="{{form.bb}}" bindinput="onInputBb" />
+          </view>
+          <view class="form-row">
+            <text class="form-label">前注积分</text>
+            <input class="form-input" type="number" value="{{form.ante}}" bindinput="onInputAnte" />
+          </view>
+        </view>
+        <button class="btn btn-primary form-submit" bindtap="createTable">进入房间</button>
+      </view>
+
+      <view wx:if="{{showJoin}}" class="form">
+        <view class="form-row">
+          <text class="form-label">房间号</text>
+          <input class="form-input" placeholder="6 位数字" value="{{joinCode}}" bindinput="onInputJoin" />
+        </view>
+        <button class="btn btn-primary form-submit" bindtap="joinTable">进入房间</button>
+      </view>
+    </view>
+
+    <view class="panel tables fade-in delay-2">
+      <view class="row table-head">
+        <view class="section-title">进行中的房间</view>
+        <view class="tag">{{tables.length}}个</view>
+      </view>
+      <view wx:if="{{!tables.length}}" class="empty">
+        还没有房间，先创建一个吧。
+      </view>
+      <view wx:for="{{tables}}" wx:key="id" class="table-card" bindtap="openTable" data-id="{{item.id}}">
+        <view class="row">
+          <view class="table-name">房间号</view>
+          <view class="table-code">#{{item.code}}</view>
+        </view>
+        <view class="table-meta">
+          <text>盲注 {{item.blinds.sb}} / {{item.blinds.bb}}</text>
+          <text>玩家 {{item.players.length}}</text>
+          <text>底池积分 {{item.pot}}</text>
+        </view>
+        <view class="table-foot">
+          <text>回合 {{item.roundLabel}}</text>
+          <text>更新时间 {{item.updatedAtLabel}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+</view>

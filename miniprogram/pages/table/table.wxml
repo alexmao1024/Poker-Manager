@@ -1,0 +1,93 @@
+<view class="screen">
+  <view class="stack">
+    <view class="panel header fade-in">
+      <view class="row">
+        <view>
+          <view class="title-sm">房间号</view>
+          <view class="subtitle">#{{table.code}} · {{roundLabel}}</view>
+        </view>
+        <view class="pot pot-hero">
+          <view class="pot-label">底池积分</view>
+          <view class="pot-value">{{displayPot}}</view>
+        </view>
+      </view>
+      <view class="meta">
+        <text>当前阶段 {{roundLabel}}</text>
+        <text>行动 {{currentPlayer.name}}</text>
+        <text>最高积分 {{currentBet}}</text>
+      </view>
+      <view class="blind-row">
+        <text>庄家 {{dealerPlayer.name}}</text>
+        <text>小盲 {{smallBlindPlayer.name}} / {{table.blinds.sb}}</text>
+        <text>大盲 {{bigBlindPlayer.name}} / {{table.blinds.bb}}</text>
+      </view>
+    </view>
+
+    <view class="panel players fade-in delay-1">
+      <view class="row table-head">
+        <view class="section-title">玩家状态</view>
+        <view class="tag">顺序行动</view>
+      </view>
+      <view class="player-grid">
+        <view
+          wx:for="{{playersView}}"
+          wx:key="id"
+          class="player-card {{item.isTurn ? 'is-turn' : ''}} {{item.statusClass}}"
+        >
+          <view class="row">
+            <view class="player-name">{{item.name}}</view>
+            <view class="tag-group">
+              <view wx:if="{{item.positionTag}}" class="tag tag-soft">{{item.positionTag}}</view>
+              <view class="tag">{{item.statusLabel}}</view>
+            </view>
+          </view>
+          <view class="player-meta">
+            <text>积分 {{item.stack}}</text>
+            <text>本轮出 {{item.bet}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="panel actions fade-in delay-2">
+      <view class="row action-head">
+        <view class="section-title">当前操作</view>
+        <view class="tag">{{currentPlayer.name}}</view>
+      </view>
+      <view class="action-info">
+        <text>需跟积分 {{callNeed}}</text>
+        <text>剩余积分 {{currentPlayer.stack}}</text>
+      </view>
+      <view class="action-buttons">
+        <button class="btn btn-ghost" bindtap="onFold">弃牌</button>
+        <button class="btn btn-ghost" bindtap="onCheckCall">跟积分</button>
+      </view>
+      <view class="action-tools">
+        <button class="btn btn-ghost" bindtap="undoAction">撤回当下</button>
+      </view>
+      <view class="raise">
+        <view class="form-row">
+          <text class="form-label">出积分到</text>
+          <input class="form-input" type="number" value="{{raiseTo}}" bindinput="onInputRaise" />
+        </view>
+        <view class="quick-raise">
+          <view class="quick-btn" data-amount="5" bindtap="onQuickRaise">+5</view>
+          <view class="quick-btn" data-amount="10" bindtap="onQuickRaise">+10</view>
+          <view class="quick-btn" data-amount="20" bindtap="onQuickRaise">+20</view>
+          <view class="quick-btn" data-amount="50" bindtap="onQuickRaise">+50</view>
+          <view class="quick-btn" data-amount="100" bindtap="onQuickRaise">+100</view>
+          <view class="quick-btn" data-amount="500" bindtap="onQuickRaise">+500</view>
+        </view>
+        <button class="btn btn-primary" bindtap="onRaise">出积分</button>
+      </view>
+    </view>
+
+    <view class="panel control fade-in delay-3">
+      <view class="row control-buttons">
+        <button class="btn btn-ghost" bindtap="endRound">{{stageActionLabel}}</button>
+        <button class="btn btn-ghost" bindtap="resetHand" disabled="{{!canStartNextRound}}">新一回合</button>
+        <button class="btn btn-primary" bindtap="goSummary">结束房间</button>
+      </view>
+    </view>
+  </view>
+</view>
