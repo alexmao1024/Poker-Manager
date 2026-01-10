@@ -2,7 +2,7 @@ const TABLES_KEY = "chip_score_tables_v1";
 const PROFILE_KEY = "chip_score_profile_v1";
 
 const defaultConfig = {
-  blinds: { sb: 10, bb: 20, ante: 0 },
+  blinds: { sb: 10, bb: 20 },
   stack: 2000,
 };
 
@@ -29,7 +29,7 @@ function buildPlayers(names, stack) {
     const playerId = generateId("p");
     return {
       id: playerId,
-      name: name || `玩家${index + 1}`,
+      name: name || `座位${index + 1}`,
       avatar: "",
       stack,
       initialStack: stack,
@@ -135,6 +135,11 @@ function saveProfile(profile) {
 
 module.exports = {
   defaultConfig,
+  buildPlayers,
+  applyBlind,
+  getIndexByOffset,
+  getNextActiveIndex,
+  generateCode,
   loadTables,
   saveTables,
   createTable,

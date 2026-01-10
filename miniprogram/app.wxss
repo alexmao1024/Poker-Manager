@@ -15,10 +15,12 @@ page {
   --chip-red: #d45b5b;
   --chip-green: #4dbb8a;
   --chip-black: #2b2b2b;
-  background: radial-gradient(120% 120% at 50% 0%, #1b3a2c 0%, #0f1814 55%, #0b120f 100%);
+  background: linear-gradient(180deg, #173428 0%, #0f1814 60%, #0b120f 100%);
   color: var(--ink-100);
   font-family: "STKaiti", "Kaiti SC", "STSong", serif;
-  min-height: 100%;
+  min-height: 100vh;
+  width: 100%;
+  overflow-x: hidden;
 }
 
 view,
@@ -27,39 +29,17 @@ text {
 }
 
 .screen {
-  min-height: 100%;
+  min-height: 100vh;
+  width: 100%;
   padding: 36rpx 28rpx 60rpx;
   position: relative;
   overflow: hidden;
 }
 
-.screen::before {
-  content: "";
-  position: absolute;
-  top: -30%;
-  right: -20%;
-  width: 80%;
-  height: 80%;
-  background: radial-gradient(circle at 30% 30%, rgba(62, 163, 122, 0.35), transparent 65%);
-  opacity: 0.7;
-  pointer-events: none;
-}
-
-.screen::after {
-  content: "";
-  position: absolute;
-  bottom: -25%;
-  left: -15%;
-  width: 70%;
-  height: 70%;
-  background: radial-gradient(circle at 40% 40%, rgba(179, 139, 63, 0.25), transparent 70%);
-  opacity: 0.8;
-  pointer-events: none;
-}
-
 .stack {
   position: relative;
   z-index: 1;
+  width: 100%;
 }
 
 .title {
@@ -172,12 +152,4 @@ button:focus{
 
 button::after{
   border: none;
-}
-
-
-page {
-  background: #f6f6f6;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
 }

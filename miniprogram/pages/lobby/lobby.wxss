@@ -1,0 +1,79 @@
+@import "../table/table.wxss";
+
+.lobby-hint {
+  margin-top: 12rpx;
+  color: var(--ink-400);
+  font-size: 22rpx;
+  text-align: center;
+}
+
+.lobby-control {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+}
+
+.lobby-control .btn {
+  width: 100%;
+}
+
+.auto-stage-row {
+  margin-top: 12rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--ink-200);
+  font-size: 22rpx;
+}
+
+.auto-stage-status {
+  color: var(--ink-400);
+}
+
+.lobby-reorder-item {
+  width: 100%;
+  height: 88px;
+  box-sizing: border-box;
+  padding: 0 6rpx;
+}
+
+.lobby-reorder-item .player-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+}
+
+.player-left {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  min-width: 0;
+}
+
+.drag-handle {
+  display: grid;
+  grid-template-columns: repeat(2, 6rpx);
+  grid-template-rows: repeat(3, 6rpx);
+  gap: 4rpx;
+  padding: 4rpx 2rpx;
+  opacity: 0.7;
+  z-index: 3;
+}
+
+.drag-handle .dot {
+  width: 6rpx;
+  height: 6rpx;
+  border-radius: 50%;
+  background: rgba(227, 197, 116, 0.8);
+}
+
+.drag-mask {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 60rpx;
+  z-index: 2;
+}

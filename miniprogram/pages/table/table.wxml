@@ -1,4 +1,5 @@
 <view class="screen">
+  <view class="rules-fab" bindtap="openRules" wx:if="{{isStarted}}">规则</view>
   <view class="stack">
     <view class="panel header fade-in">
       <view class="row">
@@ -34,10 +35,21 @@
           wx:key="id"
           class="player-card {{item.isTurn ? 'is-turn' : ''}} {{item.statusClass}}"
         >
-          <view class="row">
-            <view class="player-name">{{item.name}}</view>
+          <view class="row player-head">
+            <view class="player-info">
+              <image
+                wx:if="{{item.avatar}}"
+                class="player-avatar"
+                src="{{item.avatar}}"
+                mode="aspectFill"
+                data-id="{{item.id}}"
+                binderror="onAvatarError"
+              />
+              <view wx:else class="player-avatar avatar-fallback">{{item.nameInitial}}</view>
+            </view>
             <view class="tag-group">
               <view wx:if="{{item.positionTag}}" class="tag tag-soft">{{item.positionTag}}</view>
+              <view wx:if="{{item.isMine}}" class="tag tag-mine">我</view>
               <view class="tag">{{item.statusLabel}}</view>
             </view>
           </view>
@@ -58,35 +70,103 @@
         <text>需跟积分 {{callNeed}}</text>
         <text>剩余积分 {{currentPlayer.stack}}</text>
       </view>
-      <view class="action-buttons">
-        <button class="btn btn-ghost" bindtap="onFold">弃牌</button>
-        <button class="btn btn-ghost" bindtap="onCheckCall">跟积分</button>
-      </view>
-      <view class="action-tools">
-        <button class="btn btn-ghost" bindtap="undoAction">撤回当下</button>
-      </view>
-      <view class="raise">
-        <view class="form-row">
-          <text class="form-label">出积分到</text>
-          <input class="form-input" type="number" value="{{raiseTo}}" bindinput="onInputRaise" />
+      <view wx:if="{{canAct}}">
+        <view class="action-buttons">
+          <button class="btn btn-ghost" bindtap="onFold" disabled="{{!canFold}}">弃牌</button>
+          <button class="btn btn-ghost" bindtap="onCheckCall">
+            {{callNeed > 0 ? "跟积分" : "过牌"}}
+          </button>
+          <button class="btn btn-ghost" bindtap="onAllIn" disabled="{{!canAllIn}}">
+            全下
+          </button>
         </view>
-        <view class="quick-raise">
-          <view class="quick-btn" data-amount="5" bindtap="onQuickRaise">+5</view>
-          <view class="quick-btn" data-amount="10" bindtap="onQuickRaise">+10</view>
-          <view class="quick-btn" data-amount="20" bindtap="onQuickRaise">+20</view>
-          <view class="quick-btn" data-amount="50" bindtap="onQuickRaise">+50</view>
-          <view class="quick-btn" data-amount="100" bindtap="onQuickRaise">+100</view>
-          <view class="quick-btn" data-amount="500" bindtap="onQuickRaise">+500</view>
+        <view class="action-tools">
+          <button class="btn btn-ghost" bindtap="undoAction" disabled="{{!canUndo}}">撤回当下</button>
         </view>
-        <button class="btn btn-primary" bindtap="onRaise">出积分</button>
+        <view class="raise">
+          <view class="form-row">
+            <text class="form-label">出积分到</text>
+            <input class="form-input" type="number" value="{{raiseTo}}" bindinput="onInputRaise" />
+          </view>
+          <view class="quick-raise">
+            <view class="quick-btn" data-amount="5" bindtap="onQuickRaise">+5</view>
+            <view class="quick-btn" data-amount="10" bindtap="onQuickRaise">+10</view>
+            <view class="quick-btn" data-amount="20" bindtap="onQuickRaise">+20</view>
+            <view class="quick-btn" data-amount="50" bindtap="onQuickRaise">+50</view>
+            <view class="quick-btn" data-amount="100" bindtap="onQuickRaise">+100</view>
+            <view class="quick-btn" data-amount="500" bindtap="onQuickRaise">+500</view>
+          </view>
+          <button class="btn btn-primary" bindtap="onRaise">出积分</button>
+        </view>
+      </view>
+      <view wx:else class="action-wait">
+        {{table.round === "showdown" ? "等待房主收积分" : "等待轮到你"}}
       </view>
     </view>
 
     <view class="panel control fade-in delay-3">
       <view class="row control-buttons">
-        <button class="btn btn-ghost" bindtap="endRound">{{stageActionLabel}}</button>
+        <button
+          class="btn btn-ghost {{table.round === 'showdown' ? (canSettle ? '' : 'is-disabled') : (canAdvanceStage ? '' : 'is-disabled')}}"
+          bindtap="onStageAction"
+        >
+          {{stageActionLabel}}
+        </button>
         <button class="btn btn-ghost" bindtap="resetHand" disabled="{{!canStartNextRound}}">新一回合</button>
-        <button class="btn btn-primary" bindtap="goSummary">结束房间</button>
+        <button class="btn btn-ghost" open-type="share">分享房间</button>
+        <button wx:if="{{isHost}}" class="btn btn-primary" bindtap="goSummary">结束房间</button>
+        <button wx:else class="btn btn-primary" bindtap="leaveRoom">退出房间</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{showRules}}" class="rules-modal" bindtap="closeRules">
+    <view class="rules-card" catchtap="noop">
+      <view class="modal-title">牌力说明</view>
+      <image class="rules-image" src="/assets/hand-ranks.png" mode="widthFix" />
+      <view class="modal-actions">
+        <button class="btn btn-ghost" bindtap="closeRules">关闭</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{showSettle}}" class="rules-modal" bindtap="closeSettle">
+    <view class="settle-card" catchtap="noop">
+      <view class="modal-title">选择收积分玩家</view>
+      <view class="settle-hint">每个底池都要选赢家</view>
+      <view class="settle-list">
+        <view
+          wx:for="{{settlePots}}"
+          wx:for-item="pot"
+          wx:for-index="potIndex"
+          wx:key="potIndex"
+          class="settle-pot"
+        >
+          <view class="row settle-pot-head">
+            <text>{{potIndex === 0 ? "主池" : ("侧池" + potIndex)}}</text>
+            <text class="settle-amount">{{pot.amount}}</text>
+          </view>
+          <view class="settle-eligible">
+            <view
+              wx:for="{{pot.eligible}}"
+              wx:for-item="player"
+              wx:for-index="playerIndex"
+              wx:key="id"
+              class="settle-chip {{player.selected ? 'is-selected' : ''}}"
+              data-potindex="{{potIndex}}"
+              data-id="{{player.id}}"
+              bindtap="togglePotWinner"
+            >
+              {{player.name}}
+            </view>
+          </view>
+        </view>
+      </view>
+      <view class="modal-actions">
+        <button class="btn btn-ghost" bindtap="closeSettle">取消</button>
+        <button class="btn btn-primary" bindtap="confirmSettle">
+          确认收积分
+        </button>
       </view>
     </view>
   </view>

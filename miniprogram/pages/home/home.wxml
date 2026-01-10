@@ -1,96 +1,89 @@
 <view class="screen">
   <view class="stack">
     <view class="header fade-in">
-      <view class="row">
-        <view>
-          <view class="title">筹码计分</view>
-          <view class="subtitle">线下德州房间 · 筹码记分</view>
-        </view>
-        <view class="avatar-wrap">
+      <view class="profile-center">
+        <button
+          class="avatar-btn"
+          open-type="chooseAvatar"
+          bindchooseavatar="onChooseAvatar"
+          hover-class="none"
+        >
           <image wx:if="{{profile.avatar}}" class="avatar" src="{{profile.avatar}}" mode="aspectFill" />
           <view wx:else class="avatar avatar-placeholder">{{profileInitial}}</view>
-        </view>
+        </button>
+        <view class="profile-name editable" bindtap="openNicknameModal">{{profile.name}}</view>
+        <view class="profile-hint">点击头像选择微信头像</view>
       </view>
-      <view class="profile-actions">
-        <button class="btn btn-ghost" bindtap="onSyncProfile">微信头像</button>
-        <button class="btn btn-ghost" bindtap="onEditName">昵称</button>
+      <view class="header-title">
+        <view class="title">筹码计分</view>
+        <view class="subtitle">线下筹码记分房间</view>
+        <view wx:if="{{versionText}}" class="version-text">{{versionText}}</view>
       </view>
     </view>
 
-    <view class="panel quick fade-in delay-1">
-      <view class="row quick-head">
-        <view class="row">
-          <view class="chip"></view>
-          <view class="quick-title">快速开房</view>
-        </view>
-        <view class="tag">本地草稿</view>
-      </view>
-      <view class="quick-actions">
-        <button class="btn btn-primary" bindtap="toggleCreate">
+    <view class="action-panel fade-in delay-1">
+      <view class="action-stack">
+        <button class="btn btn-home btn-home-primary" bindtap="toggleCreate">
           {{showCreate ? "收起表单" : "新建房间"}}
         </button>
-        <button class="btn btn-ghost" bindtap="toggleJoin">
+        <button class="btn btn-home btn-home-secondary" bindtap="toggleJoin">
           {{showJoin ? "收起加入" : "加入房间"}}
         </button>
+        <button class="btn btn-home btn-home-secondary" bindtap="openMyRoom" disabled="{{!existingRoom}}">
+          进入我的房间
+        </button>
       </view>
-
-      <view wx:if="{{showCreate}}" class="form">
-        <view class="form-row">
-          <text class="form-label">玩家昵称</text>
-          <input class="form-input" placeholder="用逗号分隔，比如 阿晨,小雨,Leo" value="{{form.playersText}}" bindinput="onInputPlayers" />
-        </view>
-        <view class="form-grid">
-          <view class="form-row">
-            <text class="form-label">起始积分</text>
-            <input class="form-input" type="number" value="{{form.stack}}" bindinput="onInputStack" />
-          </view>
-          <view class="form-row">
-            <text class="form-label">小盲积分</text>
-            <input class="form-input" type="number" value="{{form.sb}}" bindinput="onInputSb" />
-          </view>
-          <view class="form-row">
-            <text class="form-label">大盲积分</text>
-            <input class="form-input" type="number" value="{{form.bb}}" bindinput="onInputBb" />
-          </view>
-          <view class="form-row">
-            <text class="form-label">前注积分</text>
-            <input class="form-input" type="number" value="{{form.ante}}" bindinput="onInputAnte" />
-          </view>
-        </view>
-        <button class="btn btn-primary form-submit" bindtap="createTable">进入房间</button>
-      </view>
-
-      <view wx:if="{{showJoin}}" class="form">
-        <view class="form-row">
-          <text class="form-label">房间号</text>
-          <input class="form-input" placeholder="6 位数字" value="{{joinCode}}" bindinput="onInputJoin" />
-        </view>
-        <button class="btn btn-primary form-submit" bindtap="joinTable">进入房间</button>
+      <view class="action-meta" wx:if="{{existingRoom}}">
+        房间号 #{{existingRoom.code}}
       </view>
     </view>
 
-    <view class="panel tables fade-in delay-2">
-      <view class="row table-head">
-        <view class="section-title">进行中的房间</view>
-        <view class="tag">{{tables.length}}个</view>
+    <view wx:if="{{showCreate}}" class="panel form-panel fade-in delay-2">
+      <view class="form-row">
+        <text class="form-label">座位数</text>
+        <input class="form-input" type="number" placeholder="2 - 9" value="{{form.seatCount}}" bindinput="onInputSeatCount" />
       </view>
-      <view wx:if="{{!tables.length}}" class="empty">
-        还没有房间，先创建一个吧。
+      <view class="form-grid">
+        <view class="form-row">
+          <text class="form-label">起始积分</text>
+          <input class="form-input" type="number" value="{{form.stack}}" bindinput="onInputStack" />
+        </view>
+        <view class="form-row">
+          <text class="form-label">小盲积分</text>
+          <input class="form-input" type="number" value="{{form.sb}}" bindinput="onInputSb" />
+        </view>
+        <view class="form-row">
+          <text class="form-label">大盲积分</text>
+          <input class="form-input" type="number" value="{{form.bb}}" bindinput="onInputBb" />
+        </view>
       </view>
-      <view wx:for="{{tables}}" wx:key="id" class="table-card" bindtap="openTable" data-id="{{item.id}}">
-        <view class="row">
-          <view class="table-name">房间号</view>
-          <view class="table-code">#{{item.code}}</view>
-        </view>
-        <view class="table-meta">
-          <text>盲注 {{item.blinds.sb}} / {{item.blinds.bb}}</text>
-          <text>玩家 {{item.players.length}}</text>
-          <text>底池积分 {{item.pot}}</text>
-        </view>
-        <view class="table-foot">
-          <text>回合 {{item.roundLabel}}</text>
-          <text>更新时间 {{item.updatedAtLabel}}</text>
-        </view>
+      <button class="btn btn-home btn-home-primary form-submit" bindtap="createTable">进入房间</button>
+    </view>
+
+    <view wx:if="{{showJoin}}" class="panel form-panel fade-in delay-2">
+      <view class="form-row">
+        <text class="form-label">房间号</text>
+        <input class="form-input" placeholder="6 位数字" value="{{joinCode}}" bindinput="onInputJoin" />
+      </view>
+      <button class="btn btn-home btn-home-primary form-submit" bindtap="joinTable">进入房间</button>
+    </view>
+
+  </view>
+
+  <view wx:if="{{showNicknameModal}}" class="nickname-modal">
+    <view class="modal-card">
+      <view class="modal-title">设置昵称</view>
+      <input
+        class="modal-input"
+        type="nickname"
+        placeholder="请输入昵称"
+        value="{{nicknameDraft}}"
+        focus="{{showNicknameModal}}"
+        bindinput="onNicknameInput"
+      />
+      <view class="modal-actions">
+        <button class="btn btn-ghost" bindtap="closeNicknameModal">取消</button>
+        <button class="btn btn-primary" bindtap="confirmNickname">确定</button>
       </view>
     </view>
   </view>

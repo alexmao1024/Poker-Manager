@@ -11,10 +11,11 @@
 
     <view class="panel result fade-in delay-1">
       <view class="row table-head">
-        <view class="section-title">积分差额</view>
-        <view class="tag">结果</view>
+        <view class="section-title">积分排行</view>
+        <view class="tag">排行</view>
       </view>
       <view wx:for="{{summaryList}}" wx:key="id" class="result-row {{item.deltaClass}}">
+        <view class="result-rank">#{{item.rank}}</view>
         <view class="result-name">{{item.name}}</view>
         <view class="result-delta">{{item.deltaLabel}}</view>
         <view class="result-stack">积分 {{item.stack}}</view>
@@ -24,7 +25,7 @@
     <view class="panel actions fade-in delay-2">
       <view class="row action-row">
         <button class="btn btn-ghost" bindtap="backToTable">回到房间</button>
-        <button class="btn btn-primary" bindtap="finishTable">结束房间</button>
+        <button wx:if="{{isHost}}" class="btn btn-primary" bindtap="finishTable">结束房间</button>
       </view>
     </view>
   </view>

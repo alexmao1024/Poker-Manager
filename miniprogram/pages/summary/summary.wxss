@@ -24,10 +24,15 @@
   padding: 16rpx 12rpx;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   display: grid;
-  grid-template-columns: 1.2fr 0.6fr 0.7fr;
+  grid-template-columns: 0.5fr 1.2fr 0.6fr 0.7fr;
   gap: 10rpx;
   align-items: center;
   font-size: 24rpx;
+}
+
+.result-rank {
+  color: var(--ink-400);
+  font-weight: 600;
 }
 
 .result-name {

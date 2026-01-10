@@ -1,0 +1,102 @@
+<view class="screen">
+  <view class="stack">
+    <view class="panel header fade-in">
+      <view class="row">
+        <view>
+          <view class="title-sm">房间号</view>
+          <view class="subtitle">#{{room.code}} · 等待开局</view>
+        </view>
+        <button class="btn btn-ghost" open-type="share">分享房间</button>
+      </view>
+      <view class="meta">
+        <text>已入座 {{playersView.length}} / {{room.maxSeats || playersView.length}}</text>
+        <text>房主 {{room.hostName || "-"}}</text>
+      </view>
+    </view>
+
+    <view class="panel players fade-in delay-1">
+      <view class="row table-head">
+        <view class="section-title">座位列表</view>
+        <view class="tag">{{isHost ? "拖拽排序" : "等待开局"}}</view>
+      </view>
+      <view class="auto-stage-row">
+        <text>自动推进阶段</text>
+        <switch wx:if="{{isHost}}" checked="{{room.autoStage}}" bindchange="onAutoStageChange" />
+        <text wx:else class="auto-stage-status">{{room.autoStage ? "开" : "关"}}</text>
+      </view>
+      <movable-area
+        class="reorder-area"
+        style="height: {{reorderAreaHeight}}px; padding-top: {{reorderPadding}}px; padding-bottom: {{reorderPadding}}px;"
+      >
+        <movable-view
+          wx:for="{{reorderList}}"
+          wx:key="id"
+          class="lobby-reorder-item"
+          direction="vertical"
+          y="{{item.y}}"
+          disabled="{{!isHost}}"
+          data-index="{{index}}"
+          bindchange="onReorderChange"
+          bindtouchend="onReorderEnd"
+          bindtouchcancel="onReorderEnd"
+        >
+          <view class="player-card">
+            <view class="drag-mask" catchtouchstart="onReorderBlock" catchtouchmove="onReorderBlock"></view>
+            <view class="row">
+              <view class="player-left">
+                <view
+                  wx:if="{{isHost}}"
+                  class="drag-handle"
+                  data-index="{{index}}"
+                  bindtouchstart="onReorderTouchStart"
+                  bindtouchend="onReorderEnd"
+                  bindtouchcancel="onReorderEnd"
+                  data-handle="1"
+                >
+                  <view class="dot" data-handle="1"></view>
+                  <view class="dot" data-handle="1"></view>
+                  <view class="dot" data-handle="1"></view>
+                  <view class="dot" data-handle="1"></view>
+                  <view class="dot" data-handle="1"></view>
+                  <view class="dot" data-handle="1"></view>
+                </view>
+                <view class="player-info">
+                  <image
+                    wx:if="{{item.avatar}}"
+                    class="player-avatar"
+                    src="{{item.avatar}}"
+                    mode="aspectFill"
+                    data-id="{{item.id}}"
+                    binderror="onAvatarError"
+                  />
+                  <view wx:else class="player-avatar avatar-fallback">{{item.nameInitial}}</view>
+                </view>
+              </view>
+              <view class="tag-group">
+                <view wx:if="{{item.positionTag}}" class="tag tag-soft">{{item.positionTag}}</view>
+                <view wx:if="{{item.isHost}}" class="tag tag-soft">房主</view>
+                <view wx:if="{{item.isMine}}" class="tag tag-mine">我</view>
+              </view>
+            </view>
+            <view class="player-meta">
+              <text>积分 {{item.stack}}</text>
+              <text>已入座</text>
+            </view>
+          </view>
+        </movable-view>
+      </movable-area>
+      <view class="lobby-hint">
+        {{isHost ? "按住左侧手柄拖动排序" : "等待房主开始"}}
+      </view>
+    </view>
+
+    <view class="panel control fade-in delay-2">
+      <view class="lobby-control">
+        <button class="btn btn-primary" bindtap="startRoom" disabled="{{!canStart}}">开始房间</button>
+        <button wx:if="{{isHost}}" class="btn btn-ghost" bindtap="endRoom">结束房间</button>
+        <button wx:else class="btn btn-ghost" bindtap="leaveRoom">退出房间</button>
+      </view>
+      <view class="lobby-hint">开局后不可加入</view>
+    </view>
+  </view>
+</view>

@@ -1,31 +1,47 @@
-const {
-  defaultConfig,
-  loadTables,
-  createTable,
-  getProfile,
-  saveProfile,
-} = require("../../utils/storage");
-const { formatRound, formatTime } = require("../../utils/format");
+const { defaultConfig, getProfile, saveProfile } = require("../../utils/storage");
+const { ensureCloudAvatar } = require("../../utils/avatar");
+const { createRoom, joinRoomByCode, getMyRoom } = require("../../utils/roomService");
+const { getOpenId } = require("../../utils/cloud");
 
 const defaultName = "玩家1";
+const REQUEST_TIMEOUT = 8000;
+
+function withTimeout(promise, timeoutMs) {
+  let timer = null;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error("TIMEOUT")), timeoutMs);
+  });
+  return Promise.race([promise, timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function buildProfile(userInfo) {
+  return {
+    name: userInfo?.nickName || defaultName,
+    avatar: userInfo?.avatarUrl || "",
+  };
+}
 
 Page({
   data: {
-    tables: [],
     showCreate: false,
     showJoin: false,
     joinCode: "",
+    showNicknameModal: false,
+    nicknameDraft: "",
+    existingRoom: null,
+    versionText: "",
     profile: {
       name: defaultName,
       avatar: "",
     },
     profileInitial: "我",
     form: {
-      playersText: "",
+      seatCount: 6,
       stack: defaultConfig.stack,
       sb: defaultConfig.blinds.sb,
       bb: defaultConfig.blinds.bb,
-      ante: defaultConfig.blinds.ante,
     },
   },
 
@@ -33,33 +49,71 @@ Page({
     const profile = getProfile() || { name: defaultName, avatar: "" };
     this.setProfile(profile);
     this.resetForm(profile);
+    this.loadVersionInfo();
   },
 
   onShow() {
-    this.refreshTables();
+    this.refreshExistingRoom();
   },
 
-  refreshTables() {
-    const tables = loadTables().map((table) => ({
-      ...table,
-      roundLabel: formatRound(table.round),
-      updatedAtLabel: formatTime(table.updatedAt),
-    }));
-    this.setData({ tables });
+  loadVersionInfo() {
+    try {
+      let env = "";
+      let version = "";
+      if (wx.getAccountInfoSync) {
+        const info = wx.getAccountInfoSync();
+        env = info?.miniProgram?.envVersion || "";
+        version = info?.miniProgram?.version || "";
+      }
+      if (!env && typeof __wxConfig !== "undefined") {
+        env = __wxConfig?.envVersion || env;
+        version = __wxConfig?.version || version;
+      }
+      const envMap = {
+        develop: "开发版",
+        trial: "体验版",
+        release: "正式版",
+      };
+      const envLabel = envMap[env] || env || "";
+      let text = envLabel;
+      if (version) {
+        text = envLabel ? `${envLabel} v${version}` : `v${version}`;
+      }
+      this.setData({ versionText: text || envLabel });
+    } catch (err) {
+      this.setData({ versionText: "" });
+    }
+  },
+
+  async refreshExistingRoom() {
+    try {
+      const openId = await getOpenId().catch(() => "");
+      if (!openId) {
+        this.setData({ existingRoom: null });
+        return;
+      }
+      const room = await getMyRoom(openId);
+      if (!room) {
+        this.setData({ existingRoom: null });
+        return;
+      }
+      this.setData({ existingRoom: { ...room, id: room._id } });
+    } catch (err) {
+      this.setData({ existingRoom: null });
+    }
   },
 
   resetForm(profile) {
-    const name = profile?.name || defaultName;
     this.setData({
       form: {
         ...this.data.form,
-        playersText: `${name},玩家2,玩家3,玩家4`,
+        seatCount: this.data.form.seatCount || 6,
       },
     });
   },
 
   setProfile(profile) {
-    const initial = profile?.name ? profile.name.slice(0, 1) : "我";
+    const initial = profile?.name ? profile.name.trim().slice(0, 1) : "我";
     this.setData({
       profile: profile || { name: defaultName, avatar: "" },
       profileInitial: initial,
@@ -80,8 +134,8 @@ Page({
     });
   },
 
-  onInputPlayers(e) {
-    this.setData({ "form.playersText": e.detail.value });
+  onInputSeatCount(e) {
+    this.setData({ "form.seatCount": Number(e.detail.value || 0) });
   },
   onInputStack(e) {
     this.setData({ "form.stack": Number(e.detail.value || 0) });
@@ -92,77 +146,153 @@ Page({
   onInputBb(e) {
     this.setData({ "form.bb": Number(e.detail.value || 0) });
   },
-  onInputAnte(e) {
-    this.setData({ "form.ante": Number(e.detail.value || 0) });
-  },
   onInputJoin(e) {
     this.setData({ joinCode: e.detail.value });
   },
 
-  createTable() {
+  async createTable() {
+    if (this.creatingRoom) return;
+    if (this.data.existingRoom?.id && this.data.existingRoom?.status === "active") {
+      wx.showToast({ title: "已在房间，已进入", icon: "none" });
+      this.openMyRoom();
+      return;
+    }
     const form = this.data.form;
     const stack = Number(form.stack) || defaultConfig.stack;
-    const names = form.playersText
-      .split(/[,\n，]/)
-      .map((name) => name.trim())
-      .filter(Boolean);
-    if (names.length < 2) {
-      wx.showToast({ title: "至少两位玩家", icon: "none" });
+    const seatCount = Math.min(9, Math.max(2, Number(form.seatCount) || 0));
+    if (seatCount < 2) {
+      wx.showToast({ title: "座位数至少 2", icon: "none" });
       return;
     }
 
-    const table = createTable({
-      hostName: this.data.profile?.name || defaultName,
-      players: names,
-      stack,
-      blinds: {
-        sb: Number(form.sb) || defaultConfig.blinds.sb,
-        bb: Number(form.bb) || defaultConfig.blinds.bb,
-        ante: Number(form.ante) || defaultConfig.blinds.ante,
-      },
-    });
+    let profile = this.data.profile || { name: defaultName, avatar: "" };
+    profile = await ensureCloudAvatar(profile).catch(() => profile);
+    this.setProfile(profile);
+    this.creatingRoom = true;
+    wx.showLoading({ title: "创建中" });
+    try {
+      const table = await withTimeout(
+        createRoom(
+          {
+            maxSeats: seatCount,
+            stack,
+            blinds: {
+              sb: Number(form.sb) || defaultConfig.blinds.sb,
+              bb: Number(form.bb) || defaultConfig.blinds.bb,
+            },
+          },
+          profile
+        ),
+        REQUEST_TIMEOUT
+      );
+      if (!table) throw new Error("NO_TABLE");
 
-    this.setData({ showCreate: false });
-    wx.navigateTo({ url: `/pages/table/table?id=${table.id}` });
+      this.setData({ showCreate: false });
+      const target = table.status === "lobby" ? "lobby" : "table";
+      wx.navigateTo({ url: `/pages/${target}/${target}?id=${table._id}` });
+      if (table.existing) {
+        wx.showToast({ title: "已在房间，已进入", icon: "none" });
+      }
+      this.setData({ existingRoom: { ...table, id: table._id } });
+    } catch (err) {
+      const msg = err?.message || err?.errMsg || "";
+      if (msg.includes("TIMEOUT")) {
+        wx.showToast({ title: "网络慢，请重试", icon: "none" });
+      } else {
+        wx.showToast({ title: "创建失败", icon: "none" });
+      }
+      return;
+    } finally {
+      this.creatingRoom = false;
+      wx.hideLoading();
+    }
   },
 
-  joinTable() {
+  async joinTable() {
+    if (this.joiningRoom) return;
     const code = (this.data.joinCode || "").trim();
     if (!/^\d{6}$/.test(code)) {
-      wx.showToast({ title: "请输入 6 位邀请码", icon: "none" });
+      wx.showToast({ title: "请输入 6 位房间号", icon: "none" });
       return;
     }
-    const table = loadTables().find((item) => item.code === code);
-    if (!table) {
-      wx.showToast({ title: "未找到房间", icon: "none" });
+    this.joiningRoom = true;
+    wx.showLoading({ title: "加入中" });
+    try {
+      const table = await withTimeout(joinRoomByCode(code), REQUEST_TIMEOUT);
+      if (!table) throw new Error("NO_TABLE");
+      this.setData({ showJoin: false });
+      const target = table.status === "lobby" ? "lobby" : "table";
+      wx.navigateTo({ url: `/pages/${target}/${target}?id=${table._id}` });
+    } catch (err) {
+      const msg = err?.message || err?.errMsg || "";
+      if (msg.includes("TIMEOUT")) {
+        wx.showToast({ title: "网络慢，请重试", icon: "none" });
+      } else {
+        wx.showToast({ title: "未找到房间", icon: "none" });
+      }
       return;
+    } finally {
+      this.joiningRoom = false;
+      wx.hideLoading();
     }
-    this.setData({ showJoin: false });
-    wx.navigateTo({ url: `/pages/table/table?id=${table.id}` });
   },
 
   openTable(e) {
-    const { id } = e.currentTarget.dataset;
+    const { id, status } = e.currentTarget.dataset;
     if (!id) return;
-    wx.navigateTo({ url: `/pages/table/table?id=${id}` });
+    const target = status === "lobby" ? "lobby" : "table";
+    wx.navigateTo({ url: `/pages/${target}/${target}?id=${id}` });
   },
 
-  onSyncProfile() {
-    wx.getUserProfile({
-      desc: "用于显示头像与昵称",
-      success: (res) => {
-        const profile = {
-          name: res.userInfo?.nickName || defaultName,
-          avatar: res.userInfo?.avatarUrl || "",
-        };
-        saveProfile(profile);
-        this.setProfile(profile);
-        this.resetForm(profile);
-      },
-      fail: () => {
-        wx.showToast({ title: "未授权头像昵称", icon: "none" });
-      },
-    });
+  openMyRoom() {
+    const room = this.data.existingRoom;
+    if (!room || !room.id) return;
+    const target = room.status === "lobby" ? "lobby" : "table";
+    wx.navigateTo({ url: `/pages/${target}/${target}?id=${room.id}` });
+  },
+
+  async onChooseAvatar(e) {
+    const avatarUrl = e?.detail?.avatarUrl || "";
+    if (!avatarUrl) return;
+    const profile = { ...(this.data.profile || {}), avatar: avatarUrl };
+    saveProfile(profile);
+    this.setProfile(profile);
+    wx.showLoading({ title: "上传头像" });
+    try {
+      const nextProfile = await ensureCloudAvatar(profile);
+      this.setProfile(nextProfile);
+    } catch (err) {
+      wx.showToast({ title: "头像上传失败", icon: "none" });
+    } finally {
+      wx.hideLoading();
+    }
+    this.openNicknameModal();
+  },
+
+  openNicknameModal() {
+    const name = this.data.profile?.name || "";
+    this.setData({ showNicknameModal: true, nicknameDraft: name });
+  },
+
+  closeNicknameModal() {
+    this.setData({ showNicknameModal: false });
+  },
+
+  onNicknameInput(e) {
+    this.setData({ nicknameDraft: e.detail.value });
+  },
+
+  confirmNickname() {
+    const name = (this.data.nicknameDraft || "").trim();
+    if (!name) {
+      wx.showToast({ title: "昵称不能为空", icon: "none" });
+      return;
+    }
+    const profile = { ...(this.data.profile || {}), name };
+    saveProfile(profile);
+    this.setProfile(profile);
+    this.resetForm(profile);
+    this.closeNicknameModal();
   },
 
   onEditName() {
