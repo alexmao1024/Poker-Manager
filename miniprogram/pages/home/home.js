@@ -50,6 +50,7 @@ Page({
     this.setProfile(profile);
     this.resetForm(profile);
     this.loadVersionInfo();
+    this.syncCloudAvatar(profile);
   },
 
   onShow() {
@@ -82,6 +83,18 @@ Page({
       this.setData({ versionText: text || envLabel });
     } catch (err) {
       this.setData({ versionText: "" });
+    }
+  },
+
+  async syncCloudAvatar(profile) {
+    if (!profile?.avatar) return;
+    try {
+      const nextProfile = await ensureCloudAvatar(profile);
+      if (nextProfile && nextProfile.avatar !== profile.avatar) {
+        this.setProfile(nextProfile);
+      }
+    } catch (err) {
+      // Silent: avoid blocking home page if upload fails.
     }
   },
 
