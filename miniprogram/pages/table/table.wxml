@@ -1,5 +1,6 @@
 <view class="screen">
   <view class="rules-fab" bindtap="openRules" wx:if="{{isStarted}}">规则</view>
+  <view class="rules-fab guide-fab" bindtap="openHostGuide" wx:if="{{isHost}}">房主流程</view>
   <view class="stack">
     <view class="panel header fade-in">
       <view class="row">
@@ -13,7 +14,7 @@
         </view>
       </view>
       <view class="meta">
-        <text>当前阶段 {{roundLabel}}</text>
+        <view class="stage-pill">当前阶段 {{roundLabel}}</view>
         <text>行动 {{currentPlayer.name}}</text>
         <text>最高积分 {{currentBet}}</text>
       </view>
@@ -43,6 +44,7 @@
                 src="{{item.avatar}}"
                 mode="aspectFill"
                 data-id="{{item.id}}"
+                data-source="{{item.avatarSource}}"
                 binderror="onAvatarError"
               />
               <view wx:else class="player-avatar avatar-fallback">{{item.nameInitial}}</view>
@@ -80,21 +82,18 @@
             全下
           </button>
         </view>
-        <view class="action-tools">
-          <button class="btn btn-ghost" bindtap="undoAction" disabled="{{!canUndo}}">撤回当下</button>
-        </view>
         <view class="raise">
           <view class="form-row">
             <text class="form-label">出积分到</text>
             <input class="form-input" type="number" value="{{raiseTo}}" bindinput="onInputRaise" />
           </view>
           <view class="quick-raise">
-            <view class="quick-btn" data-amount="5" bindtap="onQuickRaise">+5</view>
-            <view class="quick-btn" data-amount="10" bindtap="onQuickRaise">+10</view>
-            <view class="quick-btn" data-amount="20" bindtap="onQuickRaise">+20</view>
-            <view class="quick-btn" data-amount="50" bindtap="onQuickRaise">+50</view>
-            <view class="quick-btn" data-amount="100" bindtap="onQuickRaise">+100</view>
-            <view class="quick-btn" data-amount="500" bindtap="onQuickRaise">+500</view>
+            <view class="quick-btn" data-amount="5" bindtap="onQuickRaise">5</view>
+            <view class="quick-btn" data-amount="10" bindtap="onQuickRaise">10</view>
+            <view class="quick-btn" data-amount="20" bindtap="onQuickRaise">20</view>
+            <view class="quick-btn" data-amount="50" bindtap="onQuickRaise">50</view>
+            <view class="quick-btn" data-amount="100" bindtap="onQuickRaise">100</view>
+            <view class="quick-btn" data-amount="500" bindtap="onQuickRaise">500</view>
           </view>
           <button class="btn btn-primary" bindtap="onRaise">出积分</button>
         </view>
@@ -126,6 +125,22 @@
       <image class="rules-image" src="/assets/hand-ranks.png" mode="widthFix" />
       <view class="modal-actions">
         <button class="btn btn-ghost" bindtap="closeRules">关闭</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{showHostGuide}}" class="rules-modal" bindtap="closeHostGuide">
+    <view class="rules-card" catchtap="noop">
+      <view class="modal-title">房主流程</view>
+      <view class="guide-list">
+        <view class="guide-item"><text class="guide-index">1.</text><text>确认座位顺序，庄/盲位显示在左上。</text></view>
+        <view class="guide-item"><text class="guide-index">2.</text><text>开局后系统自动扣盲，按顺序行动。</text></view>
+        <view class="guide-item"><text class="guide-index">3.</text><text>进入摊牌后点击“收积分”，选择赢家。</text></view>
+        <view class="guide-item"><text class="guide-index">4.</text><text>收完积分后自动进入新一回合。</text></view>
+        <view class="guide-item"><text class="guide-index">5.</text><text>结束对局时点击“结束房间”。</text></view>
+      </view>
+      <view class="modal-actions">
+        <button class="btn btn-primary" bindtap="closeHostGuide">知道了</button>
       </view>
     </view>
   </view>

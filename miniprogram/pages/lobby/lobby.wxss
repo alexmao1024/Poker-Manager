@@ -30,6 +30,18 @@
   color: var(--ink-400);
 }
 
+.header-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  align-items: flex-end;
+}
+
+.header-actions .btn {
+  padding: 10rpx 20rpx;
+  font-size: 22rpx;
+}
+
 .lobby-reorder-item {
   width: 100%;
   height: 88px;

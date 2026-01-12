@@ -39,6 +39,17 @@
   font-size: 22rpx;
 }
 
+.stage-pill {
+  padding: 6rpx 14rpx;
+  border-radius: 999rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+  color: #201306;
+  background: rgba(227, 197, 116, 0.9);
+  border: 1px solid rgba(227, 197, 116, 0.8);
+  white-space: nowrap;
+}
+
 .blind-row {
   margin-top: 10rpx;
   display: flex;
@@ -329,6 +340,32 @@
   background: rgba(10, 16, 13, 0.75);
   border: 1px solid rgba(227, 197, 116, 0.3);
   box-shadow: 0 12rpx 20rpx rgba(0, 0, 0, 0.25);
+}
+
+.guide-fab {
+  top: 88rpx;
+}
+
+.guide-list {
+  margin-top: 12rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  color: var(--ink-200);
+  font-size: 24rpx;
+}
+
+.guide-item {
+  display: flex;
+  gap: 8rpx;
+  line-height: 1.4;
+}
+
+.guide-index {
+  color: var(--accent-2);
+  font-weight: 600;
+  width: 24rpx;
+  flex: 0 0 auto;
 }
 
 .rules-modal {

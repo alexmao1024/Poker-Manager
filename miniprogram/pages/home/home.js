@@ -1,6 +1,6 @@
 const { defaultConfig, getProfile, saveProfile } = require("../../utils/storage");
 const { ensureCloudAvatar } = require("../../utils/avatar");
-const { createRoom, joinRoomByCode, getMyRoom } = require("../../utils/roomService");
+const { createRoom, joinRoomByCode, getMyRoom, updateProfile } = require("../../utils/roomService");
 const { getOpenId } = require("../../utils/cloud");
 
 const defaultName = "玩家1";
@@ -92,10 +92,21 @@ Page({
       const nextProfile = await ensureCloudAvatar(profile);
       if (nextProfile && nextProfile.avatar !== profile.avatar) {
         this.setProfile(nextProfile);
+        this.syncProfileToRoom(nextProfile);
       }
     } catch (err) {
       // Silent: avoid blocking home page if upload fails.
     }
+  },
+
+  async syncProfileToRoom(profile) {
+    const openId = await getOpenId().catch(() => "");
+    if (!openId) return;
+    const room = this.data.existingRoom || (await getMyRoom(openId).catch(() => null));
+    if (!room) return;
+    const id = room.id || room._id;
+    if (!id) return;
+    await updateProfile(id, profile).catch(() => {});
   },
 
   async refreshExistingRoom() {
@@ -274,6 +285,7 @@ Page({
     try {
       const nextProfile = await ensureCloudAvatar(profile);
       this.setProfile(nextProfile);
+      this.syncProfileToRoom(nextProfile);
     } catch (err) {
       wx.showToast({ title: "头像上传失败", icon: "none" });
     } finally {
@@ -305,6 +317,7 @@ Page({
     saveProfile(profile);
     this.setProfile(profile);
     this.resetForm(profile);
+    this.syncProfileToRoom(profile);
     this.closeNicknameModal();
   },
 
@@ -324,6 +337,7 @@ Page({
         saveProfile(profile);
         this.setProfile(profile);
         this.resetForm(profile);
+        this.syncProfileToRoom(profile);
       },
     });
   },

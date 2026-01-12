@@ -3,7 +3,6 @@ const {
   getRoomById,
   watchRoom,
   applyAction,
-  undoAction,
   endRound,
   resetRound,
   leaveRoom,
@@ -11,7 +10,7 @@ const {
 } = require("../../utils/roomService");
 const { getOpenId } = require("../../utils/cloud");
 const { formatRound } = require("../../utils/format");
-const { isCloudFile, fetchCloudAvatarUrls } = require("../../utils/avatar");
+const { isCloudFile, fetchCloudAvatarUrls, normalizeCloudFileId } = require("../../utils/avatar");
 
 const DEFAULT_RAISE = 20;
 
@@ -112,7 +111,6 @@ Page({
     roomStatusLabel: "",
     showRules: false,
     canAct: false,
-    canUndo: false,
     showSettle: false,
     settlePots: [],
     canAdvanceStage: false,
@@ -120,12 +118,16 @@ Page({
     canFold: false,
     canAllIn: false,
     autoStage: true,
+    showHostGuide: false,
   },
 
   async onLoad(query) {
     this.avatarErrorIds = new Set();
+    this.avatarErrorSources = new Map();
     this.avatarUrlMap = new Map();
     this.avatarLoading = new Set();
+    this.avatarLocalMap = new Map();
+    this.avatarDownloadLoading = new Set();
     const profile = getProfile();
     this.setData({ profileName: profile?.name || "", profile: profile || null });
     this.roomId = query.id;
@@ -207,22 +209,38 @@ Page({
     const roundId = Number.isFinite(table.roundId) ? table.roundId : 1;
 
     const avatarErrorIds = this.avatarErrorIds || new Set();
+    const avatarErrorSources = this.avatarErrorSources || new Map();
     const pendingAvatarIds = [];
     const avatarUrlMap = this.avatarUrlMap || new Map();
+    const avatarLocalMap = this.avatarLocalMap || new Map();
     const playersView = players.map((player, index) => {
       const isMine = player.openId && player.openId === this.data.openId;
-      const rawAvatar = avatarErrorIds.has(player.id) ? "" : player.avatar;
-      let resolvedAvatar = rawAvatar;
-      if (isCloudFile(rawAvatar)) {
-        const cached = avatarUrlMap.get(rawAvatar);
-        resolvedAvatar = cached || "";
-        if (!cached) pendingAvatarIds.push(rawAvatar);
+      const rawAvatar = player.avatar || "";
+      const normalized = normalizeCloudFileId(rawAvatar);
+      const sourceAvatar = normalized || rawAvatar;
+      const hasError =
+        avatarErrorIds.has(player.id) &&
+        avatarErrorSources.get(player.id) === sourceAvatar;
+      let resolvedAvatar = hasError ? "" : rawAvatar;
+      if (isCloudFile(sourceAvatar)) {
+        const localCached = avatarLocalMap.get(sourceAvatar);
+        if (localCached) {
+          resolvedAvatar = localCached;
+        }
+        const cached = avatarUrlMap.get(sourceAvatar);
+        if (cached) {
+          resolvedAvatar = cached;
+        }
+        if (!cached && !localCached) {
+          resolvedAvatar = "";
+        }
+        if (!cached) pendingAvatarIds.push(sourceAvatar);
       }
       return {
         ...player,
         isTurn: index === turnIndex,
         isMine,
-        avatarSource: rawAvatar,
+        avatarSource: sourceAvatar,
         avatar: resolvedAvatar,
         nameInitial: (player.name || "座").trim().slice(0, 1),
         statusLabel: statusLabel(player.status, index === turnIndex),
@@ -249,13 +267,6 @@ Page({
       table.round !== "showdown" &&
       currentPlayer.openId &&
       currentPlayer.openId === this.data.openId;
-    let canUndo = false;
-    if (isStarted && table.lastActionPlayerId) {
-      const lastActor = players.find((player) => player.id === table.lastActionPlayerId);
-      if (lastActor && lastActor.openId === this.data.openId) {
-        canUndo = true;
-      }
-    }
     const allEqual =
       activePlayers.length <= 1 ||
       activePlayers.every((player) => (player.bet || 0) === (activePlayers[0]?.bet || 0));
@@ -272,6 +283,8 @@ Page({
     const settlePots = showSettle
       ? buildSidePots(players, this.data.settlePots)
       : [];
+    const turnKey = `${table.round || ""}-${roundId}-${turnIndex}`;
+    const stageLabel = formatRound(table.round);
     this.setData({
       table: { ...table, turnIndex },
       playersView,
@@ -290,7 +303,6 @@ Page({
       isStarted,
       roomStatusLabel,
       canAct,
-      canUndo,
       showSettle,
       settlePots,
       canAdvanceStage,
@@ -300,6 +312,58 @@ Page({
       autoStage,
     });
     this.loadAvatarUrls(pendingAvatarIds);
+    this.maybeShowHostGuide(isHost);
+    this.maybeAutoResetRound(isHost, table);
+
+    if (!this.hasSynced) {
+      this.hasSynced = true;
+      this.lastRound = table.round;
+      this.lastRoundId = roundId;
+      this.lastTurnKey = turnKey;
+      return;
+    }
+
+    const stageChanged =
+      (this.lastRound && this.lastRound !== table.round) ||
+      (this.lastRoundId && this.lastRoundId !== roundId);
+    if (stageChanged) {
+      const message =
+        isHost && table.round !== "showdown"
+          ? `进入${stageLabel}，请发牌`
+          : `进入${stageLabel}`;
+      wx.showToast({ title: message, icon: "none" });
+    }
+
+    if (canAct && this.lastTurnKey !== turnKey) {
+      const delay = stageChanged ? 400 : 0;
+      setTimeout(() => {
+        wx.showToast({ title: "轮到你行动", icon: "none" });
+        wx.vibrateShort?.();
+      }, delay);
+    }
+
+    this.lastRound = table.round;
+    this.lastRoundId = roundId;
+    this.lastTurnKey = turnKey;
+  },
+
+  async maybeAutoResetRound(isHost, table) {
+    if (!this.pendingAutoReset) return;
+    if (!isHost) {
+      this.pendingAutoReset = false;
+      return;
+    }
+    if (table.round !== "showdown" || !table.settled) return;
+    this.pendingAutoReset = false;
+    const expected = {
+      round: table.round,
+      settled: table.settled,
+    };
+    try {
+      await resetRound(this.roomId, expected, this.data.profileName);
+    } catch (err) {
+      // Ignore auto reset failures to avoid blocking.
+    }
   },
 
 
@@ -316,7 +380,16 @@ Page({
 
   onFold() {
     if (!this.data.canFold) return;
-    this.applyAction("fold");
+    wx.showModal({
+      title: "确认弃牌",
+      content: "确定要弃牌吗？本局将无法再行动。",
+      confirmText: "弃牌",
+      confirmColor: "#d66b6b",
+      success: (res) => {
+        if (!res.confirm) return;
+        this.applyAction("fold");
+      },
+    });
   },
 
   onCheckCall() {
@@ -333,51 +406,34 @@ Page({
       wx.showToast({ title: "出积分不能低于当前最高积分", icon: "none" });
       return;
     }
-    this.applyAction("raise");
+    const currentPlayerBet = Number(this.data.currentPlayer?.bet || 0);
+    const delta = Math.max(raiseTo - currentPlayerBet, 0);
+    wx.showModal({
+      title: "确认出积分",
+      content: `出积分到 ${raiseTo}（追加 ${delta}）？`,
+      confirmText: "确认",
+      success: (res) => {
+        if (!res.confirm) return;
+        this.applyAction("raise");
+      },
+    });
   },
 
   onAllIn() {
     if (!this.data.canAllIn) return;
-    this.applyAction("allin");
+    const stack = Number(this.data.currentPlayer?.stack || 0);
+    wx.showModal({
+      title: "确认全下",
+      content: `确认全下 ${stack} 积分？`,
+      confirmText: "全下",
+      confirmColor: "#d66b6b",
+      success: (res) => {
+        if (!res.confirm) return;
+        this.applyAction("allin");
+      },
+    });
   },
 
-  async undoAction() {
-    if (!this.roomId) return;
-    if (!this.data.canUndo) {
-      wx.showToast({ title: "不是你的回合", icon: "none" });
-      return;
-    }
-    const expected = {
-      turnIndex: this.data.table?.turnIndex,
-      round: this.data.table?.round,
-    };
-    try {
-      await undoAction(this.roomId, expected);
-    } catch (err) {
-      const code = getErrorCode(err);
-      if (code === "NO_UNDO") {
-        wx.showToast({ title: "暂无可撤回", icon: "none" });
-        return;
-      }
-      if (code === "UNDO_LOCKED") {
-        wx.showToast({ title: "已有人行动，无法撤回", icon: "none" });
-        return;
-      }
-      if (code === "TURN_CHANGED" || code === "ROUND_CHANGED") {
-        wx.showToast({ title: "状态已更新", icon: "none" });
-        return;
-      }
-      if (code === "NOT_STARTED") {
-        wx.showToast({ title: "房间未开始", icon: "none" });
-        return;
-      }
-      if (code === "NOT_OWNER") {
-        wx.showToast({ title: "不是你的座位", icon: "none" });
-        return;
-      }
-      wx.showToast({ title: "撤回失败", icon: "none" });
-    }
-  },
 
   async applyAction(type) {
     if (!this.roomId) return;
@@ -605,6 +661,9 @@ Page({
     try {
       const winnersByPot = pots.map((pot) => pot.winners || []);
       await endRound(this.roomId, expected, winnersByPot);
+      if (this.data.isHost) {
+        this.pendingAutoReset = true;
+      }
       this.setData({ showSettle: false, settlePots: [] });
     } catch (err) {
       const code = getErrorCode(err);
@@ -712,6 +771,28 @@ Page({
 
   noop() {},
 
+  maybeShowHostGuide(isHost) {
+    if (!isHost || !this.roomId) return;
+    if (this.hostGuideShown) return;
+    const key = `chip_score_host_guide_${this.roomId}`;
+    const shown = wx.getStorageSync(key);
+    if (shown) {
+      this.hostGuideShown = true;
+      return;
+    }
+    this.hostGuideShown = true;
+    wx.setStorageSync(key, "1");
+    this.setData({ showHostGuide: true });
+  },
+
+  openHostGuide() {
+    this.setData({ showHostGuide: true });
+  },
+
+  closeHostGuide() {
+    this.setData({ showHostGuide: false });
+  },
+
   onShareAppMessage() {
     const code = this.data.table?.code || "";
     const title = code ? `筹码计分 · 房间号 ${code}` : "筹码计分";
@@ -732,8 +813,14 @@ Page({
       const map = await fetchCloudAvatarUrls(unique);
       if (!this.avatarUrlMap) this.avatarUrlMap = new Map();
       map.forEach((url, id) => this.avatarUrlMap.set(id, url));
+      const missing = unique.filter((id) => !this.avatarUrlMap.has(id));
+      if (missing.length) {
+        this.downloadAvatarFiles(missing);
+      }
       const playersView = (this.data.playersView || []).map((player) => {
         if (!player.avatarSource || !isCloudFile(player.avatarSource)) return player;
+        const localCached = this.avatarLocalMap?.get(player.avatarSource);
+        if (localCached) return { ...player, avatar: localCached };
         const nextUrl = this.avatarUrlMap.get(player.avatarSource);
         if (!nextUrl) return player;
         return { ...player, avatar: nextUrl };
@@ -744,14 +831,54 @@ Page({
     }
   },
 
+  async downloadAvatarFiles(fileIds) {
+    const loading = this.avatarDownloadLoading || new Set();
+    const localMap = this.avatarLocalMap || new Map();
+    const unique = Array.from(new Set(fileIds || [])).filter(
+      (id) => id && isCloudFile(id) && !localMap.has(id) && !loading.has(id)
+    );
+    if (!unique.length) return;
+    unique.forEach((id) => loading.add(id));
+    this.avatarDownloadLoading = loading;
+    if (!this.avatarLocalMap) this.avatarLocalMap = new Map();
+    await Promise.all(
+      unique.map(async (id) => {
+        try {
+          const res = await wx.cloud.downloadFile({ fileID: id });
+          const tempPath = res?.tempFilePath;
+          if (tempPath) {
+            this.avatarLocalMap.set(id, tempPath);
+          }
+        } catch (err) {
+          // Ignore download failures.
+        }
+      })
+    );
+    const playersView = (this.data.playersView || []).map((player) => {
+      if (!player.avatarSource || !isCloudFile(player.avatarSource)) return player;
+      const localCached = this.avatarLocalMap.get(player.avatarSource);
+      if (!localCached) return player;
+      return { ...player, avatar: localCached };
+    });
+    this.setData({ playersView });
+    unique.forEach((id) => loading.delete(id));
+  },
+
   onAvatarError(e) {
     const id = e.currentTarget.dataset.id;
+    const source = e.currentTarget.dataset.source || "";
     if (!id) return;
     if (!this.avatarErrorIds) this.avatarErrorIds = new Set();
-    if (this.avatarErrorIds.has(id)) return;
+    if (!this.avatarErrorSources) this.avatarErrorSources = new Map();
+    const prevSource = this.avatarErrorSources.get(id);
+    if (this.avatarErrorIds.has(id) && prevSource === source) return;
     this.avatarErrorIds.add(id);
+    this.avatarErrorSources.set(id, source);
+    if (source && isCloudFile(source)) {
+      this.downloadAvatarFiles([source]);
+    }
     const playersView = (this.data.playersView || []).map((player) =>
-      player.id === id ? { ...player, avatar: "", avatarSource: "" } : player
+      player.id === id ? { ...player, avatar: "" } : player
     );
     this.setData({ playersView });
   },

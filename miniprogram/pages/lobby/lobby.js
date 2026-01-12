@@ -10,7 +10,12 @@ const {
   setAutoStage,
 } = require("../../utils/roomService");
 const { getOpenId } = require("../../utils/cloud");
-const { ensureCloudAvatar, isCloudFile, fetchCloudAvatarUrls } = require("../../utils/avatar");
+const {
+  ensureCloudAvatar,
+  isCloudFile,
+  fetchCloudAvatarUrls,
+  normalizeCloudFileId,
+} = require("../../utils/avatar");
 
 function buildPlayersView(players, openId, hostOpenId, hostName) {
   const list = players || [];
@@ -53,12 +58,16 @@ Page({
     reorderAreaHeight: 0,
     reorderItemHeight: 88,
     reorderPadding: 12,
+    showHostGuide: false,
   },
 
   async onLoad(query) {
     this.avatarErrorIds = new Set();
+    this.avatarErrorSources = new Map();
     this.avatarUrlMap = new Map();
     this.avatarLoading = new Set();
+    this.avatarLocalMap = new Map();
+    this.avatarDownloadLoading = new Set();
     let profile = getProfile() || {};
     profile = await ensureCloudAvatar(profile).catch(() => profile);
     this.profile = profile;
@@ -142,25 +151,41 @@ Page({
     }
     const autoStage = room.autoStage !== false;
     const avatarErrorIds = this.avatarErrorIds || new Set();
+    const avatarErrorSources = this.avatarErrorSources || new Map();
     const pendingAvatarIds = [];
     const avatarUrlMap = this.avatarUrlMap || new Map();
+    const avatarLocalMap = this.avatarLocalMap || new Map();
     const playersView = buildPlayersView(
       room.players || [],
       this.data.openId,
       room.hostOpenId,
       room.hostName
     ).map((player) => {
-      const rawAvatar = avatarErrorIds.has(player.id) ? "" : player.avatar;
-      let resolvedAvatar = rawAvatar;
-      if (isCloudFile(rawAvatar)) {
-        const cached = avatarUrlMap.get(rawAvatar);
-        resolvedAvatar = cached || "";
-        if (!cached) pendingAvatarIds.push(rawAvatar);
+      const rawAvatar = player.avatar || "";
+      const normalized = normalizeCloudFileId(rawAvatar);
+      const sourceAvatar = normalized || rawAvatar;
+      const hasError =
+        avatarErrorIds.has(player.id) &&
+        avatarErrorSources.get(player.id) === sourceAvatar;
+      let resolvedAvatar = hasError ? "" : rawAvatar;
+      if (isCloudFile(sourceAvatar)) {
+        const localCached = avatarLocalMap.get(sourceAvatar);
+        if (localCached) {
+          resolvedAvatar = localCached;
+        }
+        const cached = avatarUrlMap.get(sourceAvatar);
+        if (cached) {
+          resolvedAvatar = cached;
+        }
+        if (!cached && !localCached) {
+          resolvedAvatar = "";
+        }
+        if (!cached) pendingAvatarIds.push(sourceAvatar);
       }
       return {
         ...player,
         nameInitial: (player.name || "座").trim().slice(0, 1),
-        avatarSource: rawAvatar,
+        avatarSource: sourceAvatar,
         avatar: resolvedAvatar,
       };
     });
@@ -186,6 +211,7 @@ Page({
       reorderAreaHeight: reorderList.length * itemHeight + padding * 2,
     });
     this.loadAvatarUrls(pendingAvatarIds);
+    this.maybeShowHostGuide(isHost);
   },
 
   getErrorCode(err) {
@@ -253,15 +279,22 @@ Page({
 
   onAvatarError(e) {
     const id = e.currentTarget.dataset.id;
+    const source = e.currentTarget.dataset.source || "";
     if (!id) return;
     if (!this.avatarErrorIds) this.avatarErrorIds = new Set();
-    if (this.avatarErrorIds.has(id)) return;
+    if (!this.avatarErrorSources) this.avatarErrorSources = new Map();
+    const prevSource = this.avatarErrorSources.get(id);
+    if (this.avatarErrorIds.has(id) && prevSource === source) return;
     this.avatarErrorIds.add(id);
+    this.avatarErrorSources.set(id, source);
+    if (source && isCloudFile(source)) {
+      this.downloadAvatarFiles([source]);
+    }
     const playersView = (this.data.playersView || []).map((player) =>
-      player.id === id ? { ...player, avatar: "", avatarSource: "" } : player
+      player.id === id ? { ...player, avatar: "" } : player
     );
     const reorderList = (this.data.reorderList || []).map((player) =>
-      player.id === id ? { ...player, avatar: "", avatarSource: "" } : player
+      player.id === id ? { ...player, avatar: "" } : player
     );
     this.setData({ playersView, reorderList });
   },
@@ -279,9 +312,17 @@ Page({
       const map = await fetchCloudAvatarUrls(unique);
       if (!this.avatarUrlMap) this.avatarUrlMap = new Map();
       map.forEach((url, id) => this.avatarUrlMap.set(id, url));
+      const missing = unique.filter((id) => !this.avatarUrlMap.has(id));
+      if (missing.length) {
+        this.downloadAvatarFiles(missing);
+      }
       const applyMap = (list) =>
         (list || []).map((player) => {
           if (!player.avatarSource || !isCloudFile(player.avatarSource)) return player;
+          const localCached = this.avatarLocalMap?.get(player.avatarSource);
+          if (localCached) {
+            return { ...player, avatar: localCached };
+          }
           const nextUrl = this.avatarUrlMap.get(player.avatarSource);
           if (!nextUrl) return player;
           return { ...player, avatar: nextUrl };
@@ -295,7 +336,68 @@ Page({
     }
   },
 
+  async downloadAvatarFiles(fileIds) {
+    const loading = this.avatarDownloadLoading || new Set();
+    const localMap = this.avatarLocalMap || new Map();
+    const unique = Array.from(new Set(fileIds || [])).filter(
+      (id) => id && isCloudFile(id) && !localMap.has(id) && !loading.has(id)
+    );
+    if (!unique.length) return;
+    unique.forEach((id) => loading.add(id));
+    this.avatarDownloadLoading = loading;
+    if (!this.avatarLocalMap) this.avatarLocalMap = new Map();
+    await Promise.all(
+      unique.map(async (id) => {
+        try {
+          const res = await wx.cloud.downloadFile({ fileID: id });
+          const tempPath = res?.tempFilePath;
+          if (tempPath) {
+            this.avatarLocalMap.set(id, tempPath);
+          }
+        } catch (err) {
+          // Ignore download failures.
+        }
+      })
+    );
+    const applyMap = (list) =>
+      (list || []).map((player) => {
+        if (!player.avatarSource || !isCloudFile(player.avatarSource)) return player;
+        const localCached = this.avatarLocalMap.get(player.avatarSource);
+        if (!localCached) return player;
+        return { ...player, avatar: localCached };
+      });
+    this.setData({
+      playersView: applyMap(this.data.playersView),
+      reorderList: applyMap(this.data.reorderList),
+    });
+    unique.forEach((id) => loading.delete(id));
+  },
+
   onReorderBlock() {},
+
+  noop() {},
+
+  maybeShowHostGuide(isHost) {
+    if (!isHost || !this.roomId) return;
+    if (this.hostGuideShown) return;
+    const key = `chip_score_host_guide_${this.roomId}`;
+    const shown = wx.getStorageSync(key);
+    if (shown) {
+      this.hostGuideShown = true;
+      return;
+    }
+    this.hostGuideShown = true;
+    wx.setStorageSync(key, "1");
+    this.setData({ showHostGuide: true });
+  },
+
+  openHostGuide() {
+    this.setData({ showHostGuide: true });
+  },
+
+  closeHostGuide() {
+    this.setData({ showHostGuide: false });
+  },
 
   async saveReorder() {
     if (!this.roomId) return;

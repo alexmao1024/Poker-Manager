@@ -6,7 +6,10 @@
           <view class="title-sm">房间号</view>
           <view class="subtitle">#{{room.code}} · 等待开局</view>
         </view>
-        <button class="btn btn-ghost" open-type="share">分享房间</button>
+        <view class="header-actions">
+          <button class="btn btn-ghost" open-type="share">分享房间</button>
+          <button wx:if="{{isHost}}" class="btn btn-ghost" bindtap="openHostGuide">房主流程</button>
+        </view>
       </view>
       <view class="meta">
         <text>已入座 {{playersView.length}} / {{room.maxSeats || playersView.length}}</text>
@@ -67,6 +70,7 @@
                     src="{{item.avatar}}"
                     mode="aspectFill"
                     data-id="{{item.id}}"
+                    data-source="{{item.avatarSource}}"
                     binderror="onAvatarError"
                   />
                   <view wx:else class="player-avatar avatar-fallback">{{item.nameInitial}}</view>
@@ -97,6 +101,22 @@
         <button wx:else class="btn btn-ghost" bindtap="leaveRoom">退出房间</button>
       </view>
       <view class="lobby-hint">开局后不可加入</view>
+    </view>
+  </view>
+
+  <view wx:if="{{showHostGuide}}" class="rules-modal" bindtap="closeHostGuide">
+    <view class="rules-card" catchtap="noop">
+      <view class="modal-title">房主流程</view>
+      <view class="guide-list">
+        <view class="guide-item"><text class="guide-index">1.</text><text>大厅拖拽座位顺序，确认庄位。</text></view>
+        <view class="guide-item"><text class="guide-index">2.</text><text>点击“开始房间”，系统自动扣盲。</text></view>
+        <view class="guide-item"><text class="guide-index">3.</text><text>行动按顺序进行，轮到谁谁操作。</text></view>
+        <view class="guide-item"><text class="guide-index">4.</text><text>摊牌后点击“收积分”，选择赢家（可多人平分）。</text></view>
+        <view class="guide-item"><text class="guide-index">5.</text><text>收完积分后自动进入新一回合，需要结束就点“结束房间”。</text></view>
+      </view>
+      <view class="modal-actions">
+        <button class="btn btn-primary" bindtap="closeHostGuide">知道了</button>
+      </view>
     </view>
   </view>
 </view>

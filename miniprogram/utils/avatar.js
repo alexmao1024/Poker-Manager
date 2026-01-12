@@ -9,6 +9,23 @@ function isRemoteUrl(url) {
   return typeof url === "string" && /^https?:\/\//i.test(url);
 }
 
+function normalizeCloudFileId(url) {
+  if (!url || typeof url !== "string") return "";
+  if (isCloudFile(url)) return url;
+  if (!isRemoteUrl(url)) return "";
+  const match = url.match(/^https?:\/\/([^/]+)\/(.+)$/i);
+  if (!match) return "";
+  const host = match[1] || "";
+  if (!host.endsWith(".tcb.qcloud.la")) return "";
+  const envMatch = host.match(/(cloud\d+-[a-z0-9]+)/i);
+  if (!envMatch) return "";
+  const envId = envMatch[1];
+  const rawPath = match[2] || "";
+  const path = rawPath.split("?")[0];
+  if (!path) return "";
+  return `cloud://${envId}/${path}`;
+}
+
 function getFileExt(path) {
   if (!path) return "png";
   const match = path.match(/\.([a-zA-Z0-9]+)(?:\?|$)/);
@@ -18,7 +35,15 @@ function getFileExt(path) {
 
 async function ensureCloudAvatar(profile) {
   const avatar = profile?.avatar || "";
-  if (!avatar || isCloudFile(avatar) || isRemoteUrl(avatar)) return profile;
+  if (!avatar) return profile;
+  if (isCloudFile(avatar)) return profile;
+  const normalized = normalizeCloudFileId(avatar);
+  if (normalized) {
+    const nextProfile = { ...profile, avatar: normalized };
+    saveProfile(nextProfile);
+    return nextProfile;
+  }
+  if (isRemoteUrl(avatar)) return profile;
 
   const openId = await getOpenId().catch(() => "");
   const ext = getFileExt(avatar);
@@ -34,6 +59,7 @@ async function ensureCloudAvatar(profile) {
 module.exports = {
   ensureCloudAvatar,
   isCloudFile,
+  normalizeCloudFileId,
   async fetchCloudAvatarUrls(fileIds) {
     const list = Array.from(new Set((fileIds || []).filter(isCloudFile)));
     if (!list.length) return new Map();

@@ -10,6 +10,23 @@ const defaultConfig = {
   stack: 2000,
 };
 
+function sanitizeAvatar(avatar) {
+  if (!avatar) return "";
+  if (typeof avatar !== "string") return "";
+  if (avatar.startsWith("cloud://")) return avatar;
+  const match = avatar.match(/^https?:\/\/([^/]+)\/(.+)$/i);
+  if (!match) return "";
+  const host = match[1] || "";
+  if (!host.endsWith(".tcb.qcloud.la")) return "";
+  const envMatch = host.match(/(cloud\d+-[a-z0-9]+)/i);
+  if (!envMatch) return "";
+  const envId = envMatch[1];
+  const rawPath = match[2] || "";
+  const path = rawPath.split("?")[0];
+  if (!path) return "";
+  return `cloud://${envId}/${path}`;
+}
+
 function generateId(prefix) {
   const seed = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   return `${prefix}_${seed}`;
@@ -118,6 +135,7 @@ async function generateUniqueCode() {
 async function createRoom(payload, profile, openId) {
   const now = Date.now();
   const _ = db.command;
+  const safeAvatar = sanitizeAvatar(profile?.avatar);
   if (openId) {
     const existing = await db
       .collection(ROOMS)
@@ -138,7 +156,7 @@ async function createRoom(payload, profile, openId) {
   const stack = Number.isFinite(stackRaw) && stackRaw > 0 ? stackRaw : defaultConfig.stack;
   const blinds = normalizeBlinds(payload?.blinds);
   const players = [
-    buildPlayer(profile?.name || "房主", profile?.avatar || "", openId, stack, "active"),
+    buildPlayer(profile?.name || "房主", safeAvatar, openId, stack, "active"),
   ];
   const dealerIndex = 0;
   const turnIndex = 0;
@@ -176,7 +194,7 @@ async function createRoom(payload, profile, openId) {
       {
         openId: openId || "",
         name: profile?.name || "",
-        avatar: profile?.avatar || "",
+        avatar: safeAvatar,
       },
     ],
   };
@@ -374,80 +392,13 @@ async function applyRoomAction(id, type, raiseTo, expected, openId) {
   return { ok: true };
 }
 
-async function undoRoomAction(id, expected, openId) {
-  const now = Date.now();
-  await db.runTransaction(async (tx) => {
-    const doc = await tx.collection(ROOMS).doc(id).get();
-    const table = doc.data;
-    if (!table) {
-      throw new Error("NOT_FOUND");
-    }
-    assertStarted(table);
-    assertExpected(table, expected);
-
-    const lastAction = table.lastActionPlayerId
-      ? {
-          playerId: table.lastActionPlayerId,
-          prevBet: table.lastActionPrevBet,
-          prevStack: table.lastActionPrevStack,
-          prevStatus: table.lastActionPrevStatus,
-          prevHandBet: table.lastActionPrevHandBet,
-          turnIndexBefore: table.lastActionTurnIndexBefore,
-          turnIndexAfter: table.lastActionTurnIndexAfter,
-        }
-      : table.lastAction;
-    if (!lastAction || !lastAction.playerId) {
-      throw new Error("NO_UNDO");
-    }
-    if (table.turnIndex !== lastAction.turnIndexAfter) {
-      throw new Error("UNDO_LOCKED");
-    }
-
-    const players = (table.players || []).map((player) => ({ ...player }));
-    const index = players.findIndex((player) => player.id === lastAction.playerId);
-    if (index !== -1) {
-      const player = { ...players[index] };
-      if (player.openId && player.openId !== openId) {
-        throw new Error("NOT_OWNER");
-      }
-      player.bet = lastAction.prevBet;
-      player.stack = lastAction.prevStack;
-      player.status = lastAction.prevStatus;
-      if (typeof lastAction.prevHandBet === "number") {
-        player.handBet = lastAction.prevHandBet;
-      }
-      players[index] = player;
-    }
-
-    const log = [...(table.log || [])];
-    if (log.length) {
-      log.pop();
-    }
-
-    await tx.collection(ROOMS).doc(id).update({
-      data: {
-        players,
-        turnIndex: lastAction.turnIndexBefore,
-        lastActionPlayerId: null,
-        lastActionPrevBet: null,
-        lastActionPrevStack: null,
-        lastActionPrevStatus: null,
-        lastActionPrevHandBet: null,
-        lastActionTurnIndexBefore: null,
-        lastActionTurnIndexAfter: null,
-        log,
-        updatedAt: now,
-      },
-    });
-  });
-  return { ok: true };
-}
 
 async function joinRoom(id, profile, openId) {
   if (!openId) {
     throw new Error("NO_OPENID");
   }
   const now = Date.now();
+  const safeAvatar = sanitizeAvatar(profile?.avatar);
   await db.runTransaction(async (tx) => {
     const doc = await tx.collection(ROOMS).doc(id).get();
     const table = doc.data;
@@ -464,20 +415,20 @@ async function joinRoom(id, profile, openId) {
       members[memberIndex] = {
         ...members[memberIndex],
         name: profile?.name || members[memberIndex].name,
-        avatar: profile?.avatar || members[memberIndex].avatar,
+        avatar: safeAvatar || members[memberIndex].avatar,
       };
     } else {
       members.push({
         openId,
         name: profile?.name || "",
-        avatar: profile?.avatar || "",
+        avatar: safeAvatar,
       });
     }
 
     if (existingIndex >= 0) {
       const player = { ...players[existingIndex] };
       player.name = profile?.name || player.name;
-      player.avatar = profile?.avatar || player.avatar;
+      player.avatar = safeAvatar || player.avatar;
       players[existingIndex] = player;
       await tx.collection(ROOMS).doc(id).update({
         data: { players, members, updatedAt: now },
@@ -495,7 +446,13 @@ async function joinRoom(id, profile, openId) {
     }
 
     players.push(
-      buildPlayer(profile?.name || `座位${players.length + 1}`, profile?.avatar, openId, stack, "active")
+      buildPlayer(
+        profile?.name || `座位${players.length + 1}`,
+        safeAvatar,
+        openId,
+        stack,
+        "active"
+      )
     );
 
     await tx.collection(ROOMS).doc(id).update({
@@ -667,6 +624,55 @@ async function setAutoStage(id, enabled, openId) {
       updatedAt: now,
     },
   });
+  return { ok: true };
+}
+
+async function updateProfile(id, profile, openId) {
+  if (!openId) {
+    throw new Error("NO_OPENID");
+  }
+  const now = Date.now();
+  const doc = await db.collection(ROOMS).doc(id).get();
+  const table = doc.data;
+  if (!table) {
+    throw new Error("NOT_FOUND");
+  }
+  const nextName = profile?.name || "";
+  const nextAvatar = sanitizeAvatar(profile?.avatar);
+  const members = Array.isArray(table.members) ? [...table.members] : [];
+  const memberIndex = members.findIndex((member) => member.openId === openId);
+  if (memberIndex >= 0) {
+    members[memberIndex] = {
+      ...members[memberIndex],
+      name: nextName || members[memberIndex].name,
+      avatar: nextAvatar || members[memberIndex].avatar,
+    };
+  } else {
+    members.push({
+      openId,
+      name: nextName,
+      avatar: nextAvatar,
+    });
+  }
+
+  const players = (table.players || []).map((player) => {
+    if (player.openId !== openId) return player;
+    return {
+      ...player,
+      name: nextName || player.name,
+      avatar: nextAvatar || player.avatar,
+    };
+  });
+
+  const updates = {
+    members,
+    players,
+    updatedAt: now,
+  };
+  if (table.hostOpenId && table.hostOpenId === openId && nextName) {
+    updates.hostName = nextName;
+  }
+  await db.collection(ROOMS).doc(id).update({ data: updates });
   return { ok: true };
 }
 
@@ -1016,9 +1022,6 @@ exports.main = async (event) => {
     );
   }
 
-  if (action === "undoAction") {
-    return undoRoomAction(payload?.id, payload?.expected, openId);
-  }
 
   if (action === "joinRoom") {
     return joinRoom(payload?.id, payload?.profile, openId);
@@ -1038,6 +1041,10 @@ exports.main = async (event) => {
 
   if (action === "startRoom") {
     return startRoom(payload?.id, openId);
+  }
+
+  if (action === "updateProfile") {
+    return updateProfile(payload?.id, payload?.profile, openId);
   }
 
   if (action === "endRound") {

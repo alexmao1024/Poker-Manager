@@ -112,6 +112,10 @@ async function setAutoStage(id, enabled) {
   return callRoomAction("setAutoStage", { id, enabled });
 }
 
+async function updateProfile(id, profile) {
+  return callRoomAction("updateProfile", { id, profile });
+}
+
 function watchRoom(id, handlers) {
   const db = getDb();
   return db.collection(ROOMS).doc(id).watch({
@@ -129,10 +133,6 @@ function watchRoom(id, handlers) {
 
 async function applyAction(id, type, raiseTo, expected) {
   return callRoomAction("applyAction", { id, type, raiseTo, expected });
-}
-
-async function undoAction(id, expected) {
-  return callRoomAction("undoAction", { id, expected });
 }
 
 async function endRound(id, expected, winnersByPot) {
@@ -161,9 +161,9 @@ module.exports = {
   leaveRoom,
   startRoom,
   setAutoStage,
+  updateProfile,
   watchRoom,
   applyAction,
-  undoAction,
   endRound,
   resetRound,
   finishRoom,
