@@ -30,6 +30,17 @@
   color: var(--ink-400);
 }
 
+.timeout-input {
+  width: 140rpx;
+  text-align: right;
+  border: 1px solid rgba(227, 197, 116, 0.25);
+  border-radius: 12rpx;
+  padding: 6rpx 10rpx;
+  color: var(--ink-100);
+  background: rgba(9, 14, 12, 0.55);
+  font-size: 22rpx;
+}
+
 .header-actions {
   display: flex;
   flex-direction: column;

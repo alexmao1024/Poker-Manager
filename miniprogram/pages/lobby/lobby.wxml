@@ -27,6 +27,18 @@
         <switch wx:if="{{isHost}}" checked="{{room.autoStage}}" bindchange="onAutoStageChange" />
         <text wx:else class="auto-stage-status">{{room.autoStage ? "开" : "关"}}</text>
       </view>
+      <view class="auto-stage-row">
+        <text>行动超时（秒）</text>
+        <input
+          class="timeout-input"
+          type="number"
+          value="{{timeoutDraft}}"
+          placeholder="60"
+          disabled="{{!isHost}}"
+          bindfocus="onTimeoutFocus"
+          bindblur="onTimeoutBlur"
+        />
+      </view>
       <movable-area
         class="reorder-area"
         style="height: {{reorderAreaHeight}}px; padding-top: {{reorderPadding}}px; padding-bottom: {{reorderPadding}}px;"

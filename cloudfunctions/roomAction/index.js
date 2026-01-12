@@ -8,6 +8,7 @@ const roundOrder = ["preflop", "flop", "turn", "river", "showdown"];
 const defaultConfig = {
   blinds: { sb: 10, bb: 20 },
   stack: 2000,
+  actionTimeoutSec: 60,
 };
 
 function sanitizeAvatar(avatar) {
@@ -97,6 +98,19 @@ function normalizeBlinds(input) {
   };
 }
 
+function normalizeTimeoutSec(input) {
+  const value = Number(input);
+  if (Number.isFinite(value) && value >= 0) return value;
+  return defaultConfig.actionTimeoutSec;
+}
+
+function calcTurnExpiresAt(now, timeoutSec, round, hasTurn) {
+  if (!timeoutSec || timeoutSec <= 0) return null;
+  if (round === "showdown") return null;
+  if (!hasTurn) return null;
+  return now + timeoutSec * 1000;
+}
+
 function assertExpected(table, expected) {
   if (!expected) return;
   if (typeof expected.turnIndex === "number" && table.turnIndex !== expected.turnIndex) {
@@ -155,6 +169,7 @@ async function createRoom(payload, profile, openId) {
   const stackRaw = Number(payload?.stack);
   const stack = Number.isFinite(stackRaw) && stackRaw > 0 ? stackRaw : defaultConfig.stack;
   const blinds = normalizeBlinds(payload?.blinds);
+  const actionTimeoutSec = normalizeTimeoutSec(payload?.actionTimeoutSec);
   const players = [
     buildPlayer(profile?.name || "房主", safeAvatar, openId, stack, "active"),
   ];
@@ -162,7 +177,7 @@ async function createRoom(payload, profile, openId) {
   const turnIndex = 0;
 
   const code = await generateUniqueCode();
-    const room = {
+  const room = {
       code,
       createdAt: now,
       updatedAt: now,
@@ -170,11 +185,13 @@ async function createRoom(payload, profile, openId) {
     blinds,
     stack,
     maxSeats,
+    actionTimeoutSec,
     round: "preflop",
     roundId: 1,
     dealerIndex,
     turnIndex,
     pot: 0,
+    turnExpiresAt: null,
     players,
       log: [],
       notice: null,
@@ -251,20 +268,27 @@ async function applyRoomAction(id, type, raiseTo, expected, openId) {
     };
 
     let paid = 0;
-    if (type === "fold") {
+    let actionType = type;
+    if (type === "timeout") {
+      if (!table.turnExpiresAt || now < table.turnExpiresAt) {
+        throw new Error("NOT_TIMEOUT");
+      }
+      actionType = callNeed > 0 ? "fold" : "check";
+    }
+    if (actionType === "fold") {
       player.status = "fold";
-    } else if (type === "check") {
+    } else if (actionType === "check") {
       if (callNeed > 0) {
         throw new Error("NEED_CALL");
       }
-    } else if (type === "call") {
+    } else if (actionType === "call") {
       paid = Math.min(callNeed, player.stack);
       player.stack -= paid;
       player.bet += paid;
       if (player.stack === 0) {
         player.status = "allin";
       }
-    } else if (type === "raise") {
+    } else if (actionType === "raise") {
       if (raiseTo < currentBet) {
         throw new Error("RAISE_TOO_LOW");
       }
@@ -278,7 +302,7 @@ async function applyRoomAction(id, type, raiseTo, expected, openId) {
       if (player.stack === 0) {
         player.status = "allin";
       }
-    } else if (type === "allin") {
+    } else if (actionType === "allin") {
       if (player.stack <= 0) {
         throw new Error("NO_STACK");
       }
@@ -305,6 +329,7 @@ async function applyRoomAction(id, type, raiseTo, expected, openId) {
     let nextRoundId = roundId;
     let pot = table.pot || 0;
     let shouldClearLastAction = false;
+    const timeoutSec = normalizeTimeoutSec(table.actionTimeoutSec);
 
     const autoStageEnabled = table.autoStage !== false;
     if (inHandAfter.length <= 1 || (inHandAfter.length > 1 && activeAfter.length === 0)) {
@@ -360,12 +385,18 @@ async function applyRoomAction(id, type, raiseTo, expected, openId) {
       }
     }
     lastAction.turnIndexAfter = nextTurnIndex;
+    const turnExpiresAt = calcTurnExpiresAt(
+      now,
+      timeoutSec,
+      nextRound,
+      nextRound !== "showdown" && activeAfter.length > 0
+    );
 
     const log = [...(table.log || [])];
     log.push({
       ts: now,
       playerId: player.id,
-      action: type,
+      action: actionType,
       bet: player.bet,
     });
 
@@ -376,6 +407,7 @@ async function applyRoomAction(id, type, raiseTo, expected, openId) {
         roundId: nextRoundId,
         turnIndex: nextTurnIndex,
         pot,
+        turnExpiresAt,
         settled: nextRound === "showdown" ? false : table.settled,
         lastActionPlayerId: shouldClearLastAction ? null : lastAction.playerId,
         lastActionPrevBet: shouldClearLastAction ? null : lastAction.prevBet,
@@ -543,6 +575,13 @@ async function leaveRoom(id, openId) {
     } else if (table.turnIndex === leavingIndex) {
       nextTurnIndex = getNextActiveIndex(players, leavingIndex);
     }
+    const timeoutSec = normalizeTimeoutSec(table.actionTimeoutSec);
+    const turnExpiresAt = calcTurnExpiresAt(
+      now,
+      timeoutSec,
+      nextRound,
+      nextRound !== "showdown" && inHandAfter.length > 1
+    );
 
     await tx.collection(ROOMS).doc(id).update({
       data: {
@@ -550,6 +589,7 @@ async function leaveRoom(id, openId) {
         members,
         round: nextRound,
         turnIndex: nextTurnIndex,
+        turnExpiresAt,
         notice,
         updatedAt: now,
       },
@@ -676,6 +716,31 @@ async function updateProfile(id, profile, openId) {
   return { ok: true };
 }
 
+async function setActionTimeout(id, actionTimeoutSec, openId) {
+  if (!openId) {
+    throw new Error("NO_OPENID");
+  }
+  const now = Date.now();
+  const doc = await db.collection(ROOMS).doc(id).get();
+  const table = doc.data;
+  if (!table) {
+    throw new Error("NOT_FOUND");
+  }
+  if (table.hostOpenId && table.hostOpenId !== openId) {
+    throw new Error("NOT_HOST");
+  }
+  if (table.status !== "lobby") {
+    throw new Error("ROOM_STARTED");
+  }
+  await db.collection(ROOMS).doc(id).update({
+    data: {
+      actionTimeoutSec: normalizeTimeoutSec(actionTimeoutSec),
+      updatedAt: now,
+    },
+  });
+  return { ok: true };
+}
+
 async function startRoom(id, openId) {
   if (!openId) {
     throw new Error("NO_OPENID");
@@ -711,6 +776,13 @@ async function startRoom(id, openId) {
     applyBlind(players, bigBlindIndex, table.blinds?.bb || defaultConfig.blinds.bb);
     applyBlind(players, smallBlindIndex, table.blinds?.sb || defaultConfig.blinds.sb);
 
+    const timeoutSec = normalizeTimeoutSec(table.actionTimeoutSec);
+    const turnExpiresAt = calcTurnExpiresAt(
+      now,
+      timeoutSec,
+      "preflop",
+      players.length > 0
+    );
     await tx.collection(ROOMS).doc(id).update({
       data: {
         status: "active",
@@ -720,6 +792,7 @@ async function startRoom(id, openId) {
         turnIndex: getNextActiveIndex(players, bigBlindIndex),
         players,
         pot: 0,
+        turnExpiresAt,
         lastActionPlayerId: null,
         lastActionPrevBet: null,
         lastActionPrevStack: null,
@@ -787,6 +860,9 @@ async function endRoomRound(id, expected, openId, winnersByPot) {
       });
 
       const roundId = Number.isFinite(table.roundId) ? table.roundId : 1;
+      const nextRoundIndex = Math.max(0, roundOrder.indexOf(table.round));
+      const nextRound = roundOrder[Math.min(nextRoundIndex + 1, roundOrder.length - 1)];
+      const timeoutSec = normalizeTimeoutSec(table.actionTimeoutSec);
       const updates = {
         players,
         pot: (table.pot || 0) + potGain,
@@ -801,8 +877,7 @@ async function endRoomRound(id, expected, openId, winnersByPot) {
         updatedAt: now,
       };
 
-      const roundIndex = Math.max(0, roundOrder.indexOf(table.round));
-      updates.round = roundOrder[Math.min(roundIndex + 1, roundOrder.length - 1)];
+      updates.round = nextRound;
       if (players.length) {
         const dealerIndex = (table.dealerIndex || 0) % players.length;
         const smallBlindIndex = (dealerIndex + 1) % players.length;
@@ -813,6 +888,12 @@ async function endRoomRound(id, expected, openId, winnersByPot) {
       } else {
         updates.turnIndex = 0;
       }
+      updates.turnExpiresAt = calcTurnExpiresAt(
+        now,
+        timeoutSec,
+        updates.round,
+        updates.round !== "showdown" && players.length > 0
+      );
 
       await tx.collection(ROOMS).doc(id).update({ data: updates });
       return;
@@ -888,6 +969,7 @@ async function endRoomRound(id, expected, openId, winnersByPot) {
       players,
       pot: 0,
       settled: true,
+      turnExpiresAt: null,
       lastActionPlayerId: null,
       lastActionPrevBet: null,
       lastActionPrevStack: null,
@@ -962,6 +1044,13 @@ async function resetRoomRound(id, expected, profileName, openId) {
       applyBlind(players, bigBlindIndex, table.blinds.bb);
       applyBlind(players, smallBlindIndex, table.blinds.sb);
     }
+    const timeoutSec = normalizeTimeoutSec(table.actionTimeoutSec);
+    const turnExpiresAt = calcTurnExpiresAt(
+      now,
+      timeoutSec,
+      "preflop",
+      players.length > 0
+    );
 
     await tx.collection(ROOMS).doc(id).update({
       data: {
@@ -970,6 +1059,7 @@ async function resetRoomRound(id, expected, profileName, openId) {
         roundId: 1,
         dealerIndex,
         turnIndex: players.length ? getNextActiveIndex(players, bigBlindIndex) : 0,
+        turnExpiresAt,
         players,
         lastActionPlayerId: null,
         lastActionPrevBet: null,
@@ -1037,6 +1127,10 @@ exports.main = async (event) => {
 
   if (action === "setAutoStage") {
     return setAutoStage(payload?.id, payload?.enabled, openId);
+  }
+
+  if (action === "setActionTimeout") {
+    return setActionTimeout(payload?.id, payload?.actionTimeoutSec, openId);
   }
 
   if (action === "startRoom") {

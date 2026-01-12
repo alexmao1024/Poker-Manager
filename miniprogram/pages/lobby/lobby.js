@@ -8,6 +8,7 @@ const {
   startRoom,
   finishRoom,
   setAutoStage,
+  setActionTimeout,
 } = require("../../utils/roomService");
 const { getOpenId } = require("../../utils/cloud");
 const {
@@ -59,6 +60,7 @@ Page({
     reorderItemHeight: 88,
     reorderPadding: 12,
     showHostGuide: false,
+    timeoutDraft: 60,
   },
 
   async onLoad(query) {
@@ -196,6 +198,9 @@ Page({
       return;
     }
     const autoStage = room.autoStage !== false;
+    const timeoutSec = Number.isFinite(Number(room.actionTimeoutSec))
+      ? Math.max(0, Number(room.actionTimeoutSec))
+      : 60;
     const avatarErrorIds = this.avatarErrorIds || new Set();
     const avatarErrorSources = this.avatarErrorSources || new Map();
     const pendingAvatarIds = [];
@@ -255,6 +260,7 @@ Page({
       canStart,
       reorderList,
       reorderAreaHeight: reorderList.length * itemHeight + padding * 2,
+      timeoutDraft: this.timeoutEditing ? this.data.timeoutDraft : timeoutSec,
     });
     this.loadAvatarUrls(pendingAvatarIds);
     this.maybeShowHostGuide(isHost);
@@ -420,6 +426,36 @@ Page({
   },
 
   onReorderBlock() {},
+
+  onTimeoutFocus() {
+    this.timeoutEditing = true;
+  },
+
+  async onTimeoutBlur(e) {
+    this.timeoutEditing = false;
+    if (!this.data.isHost || !this.roomId) return;
+    const value = Number(e.detail.value || 0);
+    const nextValue = Number.isFinite(value) ? Math.max(0, Math.min(600, value)) : 60;
+    if (nextValue === Number(this.data.room?.actionTimeoutSec)) {
+      this.setData({ timeoutDraft: nextValue });
+      return;
+    }
+    try {
+      await setActionTimeout(this.roomId, nextValue);
+      this.setData({ timeoutDraft: nextValue });
+    } catch (err) {
+      const code = this.getErrorCode(err);
+      if (code === "NOT_HOST") {
+        wx.showToast({ title: "仅房主可修改", icon: "none" });
+        return;
+      }
+      if (code === "ROOM_STARTED") {
+        wx.showToast({ title: "已开局，无法修改", icon: "none" });
+        return;
+      }
+      wx.showToast({ title: "更新失败", icon: "none" });
+    }
+  },
 
   noop() {},
 

@@ -119,6 +119,7 @@ Page({
     canAllIn: false,
     autoStage: true,
     showHostGuide: false,
+    turnLeft: 0,
   },
 
   async onLoad(query) {
@@ -167,6 +168,7 @@ Page({
       this.roomWatcher.close();
       this.roomWatcher = null;
     }
+    this.clearTurnCountdown();
   },
 
   onHide() {
@@ -175,6 +177,7 @@ Page({
       this.roomWatcher = null;
     }
     this.wasHidden = true;
+    this.clearTurnCountdown();
   },
 
   startWatch() {
@@ -357,6 +360,7 @@ Page({
       canAllIn,
       autoStage,
     });
+    this.setupTurnCountdown(table, turnKey);
     this.loadAvatarUrls(pendingAvatarIds);
     this.maybeShowHostGuide(isHost);
     this.maybeAutoResetRound(isHost, table);
@@ -391,6 +395,62 @@ Page({
     this.lastRound = table.round;
     this.lastRoundId = roundId;
     this.lastTurnKey = turnKey;
+  },
+
+  clearTurnCountdown() {
+    if (this.turnCountdownTimer) {
+      clearInterval(this.turnCountdownTimer);
+      this.turnCountdownTimer = null;
+    }
+    this.turnCountdownKey = "";
+  },
+
+  setupTurnCountdown(table, turnKey) {
+    const expiresAt = Number(table?.turnExpiresAt || 0);
+    if (!expiresAt || table?.round === "showdown") {
+      this.clearTurnCountdown();
+      if (this.data.turnLeft !== 0) {
+        this.setData({ turnLeft: 0 });
+      }
+      return;
+    }
+    const countdownKey = `${turnKey}_${expiresAt}`;
+    if (this.turnCountdownKey === countdownKey) return;
+    this.clearTurnCountdown();
+    this.turnCountdownKey = countdownKey;
+
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+      if (left !== this.data.turnLeft) {
+        this.setData({ turnLeft: left });
+      }
+      if (left <= 0) {
+        this.clearTurnCountdown();
+        this.handleTurnTimeout(turnKey);
+      }
+    };
+
+    tick();
+    this.turnCountdownTimer = setInterval(tick, 500);
+  },
+
+  async handleTurnTimeout(turnKey) {
+    if (!this.data.isStarted) return;
+    if (this.data.table?.round === "showdown") return;
+    if (!(this.data.isHost || this.data.canAct)) return;
+    if (this.timeoutHandlingKey === turnKey) return;
+    this.timeoutHandlingKey = turnKey;
+    try {
+      this.isTimeoutRequest = true;
+      await this.applyAction("timeout");
+    } finally {
+      this.isTimeoutRequest = false;
+      setTimeout(() => {
+        if (this.timeoutHandlingKey === turnKey) {
+          this.timeoutHandlingKey = "";
+        }
+      }, 1200);
+    }
   },
 
   async maybeAutoResetRound(isHost, table) {
@@ -497,6 +557,12 @@ Page({
       await applyAction(this.roomId, type, raiseTo, expected);
     } catch (err) {
       const code = getErrorCode(err);
+      if (
+        this.isTimeoutRequest &&
+        (code === "TURN_CHANGED" || code === "ROUND_CHANGED" || code === "NOT_TIMEOUT")
+      ) {
+        return;
+      }
       if (code === "TURN_CHANGED") {
         wx.showToast({ title: "轮到别人了", icon: "none" });
         return;
@@ -543,6 +609,9 @@ Page({
       }
       if (code === "NO_STACK") {
         wx.showToast({ title: "积分不足", icon: "none" });
+        return;
+      }
+      if (code === "NOT_TIMEOUT") {
         return;
       }
       const fallback = err?.errMsg || err?.message || "操作失败";

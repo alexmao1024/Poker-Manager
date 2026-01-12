@@ -172,6 +172,8 @@
   margin-top: 10rpx;
   display: flex;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8rpx 12rpx;
   color: var(--ink-400);
   font-size: 22rpx;
 }
@@ -343,7 +345,8 @@
 }
 
 .guide-fab {
-  top: 88rpx;
+  top: auto;
+  bottom: 24rpx;
 }
 
 .guide-list {

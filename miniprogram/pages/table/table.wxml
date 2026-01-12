@@ -71,6 +71,8 @@
       <view class="action-info">
         <text>需跟积分 {{callNeed}}</text>
         <text>剩余积分 {{currentPlayer.stack}}</text>
+        <text wx:if="{{turnLeft > 0}}">倒计时 {{turnLeft}}s</text>
+        <text wx:elif="{{table.actionTimeoutSec === 0}}">倒计时 关闭</text>
       </view>
       <view wx:if="{{canAct}}">
         <view class="action-buttons">

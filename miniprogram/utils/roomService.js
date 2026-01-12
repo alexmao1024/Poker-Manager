@@ -112,6 +112,10 @@ async function setAutoStage(id, enabled) {
   return callRoomAction("setAutoStage", { id, enabled });
 }
 
+async function setActionTimeout(id, actionTimeoutSec) {
+  return callRoomAction("setActionTimeout", { id, actionTimeoutSec });
+}
+
 async function updateProfile(id, profile) {
   return callRoomAction("updateProfile", { id, profile });
 }
@@ -162,6 +166,7 @@ module.exports = {
   startRoom,
   setAutoStage,
   updateProfile,
+  setActionTimeout,
   watchRoom,
   applyAction,
   endRound,
