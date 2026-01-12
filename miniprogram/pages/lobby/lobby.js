@@ -80,6 +80,7 @@ Page({
     const room = await getRoomById(this.roomId).catch(() => null);
     if (!room) {
       wx.showToast({ title: "房间不存在", icon: "none" });
+      wx.reLaunch({ url: "/pages/home/home" });
       return;
     }
     if (room.status === "active") {
@@ -105,8 +106,17 @@ Page({
   },
 
   onShow() {
-    if (!this.roomId || this.roomWatcher) return;
+    if (!this.roomId) return;
+    if (this.roomWatcher) {
+      this.roomWatcher.close();
+      this.roomWatcher = null;
+    }
+    this.refreshRoom();
     this.startWatch();
+    if (this.wasHidden) {
+      wx.showToast({ title: "已恢复同步", icon: "none" });
+      this.wasHidden = false;
+    }
   },
 
   onUnload() {
@@ -114,6 +124,14 @@ Page({
       this.roomWatcher.close();
       this.roomWatcher = null;
     }
+  },
+
+  onHide() {
+    if (this.roomWatcher) {
+      this.roomWatcher.close();
+      this.roomWatcher = null;
+    }
+    this.wasHidden = true;
   },
 
   startWatch() {
@@ -130,9 +148,37 @@ Page({
         this.syncView(room);
       },
       onError: () => {
-        wx.showToast({ title: "同步断开", icon: "none" });
+        wx.showToast({ title: "同步断开，正在重连", icon: "none" });
+        this.scheduleWatchRetry();
       },
     });
+  },
+
+  scheduleWatchRetry() {
+    if (this.watchRetryTimer || !this.roomId) return;
+    this.watchRetryTimer = setTimeout(() => {
+      this.watchRetryTimer = null;
+      if (this.roomWatcher) {
+        this.roomWatcher.close();
+        this.roomWatcher = null;
+      }
+      this.startWatch();
+    }, 1500);
+  },
+
+  async refreshRoom() {
+    if (!this.roomId) return;
+    const room = await getRoomById(this.roomId).catch(() => null);
+    if (!room) {
+      wx.showToast({ title: "房间不存在", icon: "none" });
+      wx.reLaunch({ url: "/pages/home/home" });
+      return;
+    }
+    if (room.status === "active") {
+      wx.redirectTo({ url: `/pages/table/table?id=${this.roomId}` });
+      return;
+    }
+    this.syncView(room);
   },
 
   handleNotice(notice) {
