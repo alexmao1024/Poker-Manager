@@ -11,8 +11,10 @@ const {
 const { getOpenId } = require("../../utils/cloud");
 const { formatRound } = require("../../utils/format");
 const { isCloudFile, fetchCloudAvatarUrls, normalizeCloudFileId } = require("../../utils/avatar");
+const { createRoomStore } = require("../../stores/roomStore");
 
 const DEFAULT_RAISE = 20;
+const roomStore = createRoomStore();
 
 function calcCurrentBet(players) {
   return players.reduce((max, player) => Math.max(max, player.bet || 0), 0);
@@ -83,6 +85,10 @@ function getErrorCode(err) {
   return match ? match[1] : msg;
 }
 
+function updateRoomStore(room) {
+  roomStore.setState({ room: room || null });
+}
+
 Page({
   data: {
     table: {
@@ -132,6 +138,15 @@ Page({
     const profile = getProfile();
     this.setData({ profileName: profile?.name || "", profile: profile || null });
     this.roomId = query.id;
+    roomStore.setState({ roomId: this.roomId });
+    this.unsubscribeRoomStore = roomStore.subscribe((state) => {
+      if (!state.room) return;
+      this.syncView(state.room);
+    });
+    const storeState = roomStore.getState();
+    if (storeState?.room) {
+      this.syncView(storeState.room);
+    }
     const openId = await getOpenId().catch(() => "");
     if (openId) this.setData({ openId });
 
@@ -145,7 +160,7 @@ Page({
       wx.redirectTo({ url: `/pages/lobby/lobby?id=${this.roomId}` });
       return;
     }
-    this.syncView(table);
+    updateRoomStore(table);
     this.startWatch();
   },
 
@@ -167,6 +182,10 @@ Page({
     if (this.roomWatcher) {
       this.roomWatcher.close();
       this.roomWatcher = null;
+    }
+    if (this.unsubscribeRoomStore) {
+      this.unsubscribeRoomStore();
+      this.unsubscribeRoomStore = null;
     }
     this.clearTurnCountdown();
   },
@@ -191,7 +210,7 @@ Page({
           return;
         }
         this.handleNotice(room.notice);
-        this.syncView(room);
+        updateRoomStore(room);
       },
       onError: () => {
         wx.showToast({ title: "同步断开，正在重连", icon: "none" });
@@ -224,7 +243,7 @@ Page({
       wx.redirectTo({ url: `/pages/lobby/lobby?id=${this.roomId}` });
       return;
     }
-    this.syncView(table);
+    updateRoomStore(table);
   },
 
   handleNotice(notice) {

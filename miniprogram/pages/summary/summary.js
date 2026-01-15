@@ -2,6 +2,9 @@ const { getRoomById, finishRoom } = require("../../utils/roomService");
 const { getOpenId } = require("../../utils/cloud");
 const { getProfile } = require("../../utils/storage");
 const { formatRound } = require("../../utils/format");
+const { createRoomStore } = require("../../stores/roomStore");
+
+const roomStore = createRoomStore();
 
 function buildSummary(players) {
   const list = players.map((player) => {
@@ -28,6 +31,10 @@ function buildSummary(players) {
   }));
 }
 
+function updateRoomStore(table) {
+  roomStore.setState({ room: table || null });
+}
+
 Page({
   data: {
     table: {
@@ -44,6 +51,15 @@ Page({
 
   async onLoad(query) {
     this.roomId = query.id;
+    roomStore.setState({ roomId: this.roomId });
+    this.unsubscribeRoomStore = roomStore.subscribe((state) => {
+      if (!state.room) return;
+      this.syncView(state.room);
+    });
+    const storeState = roomStore.getState();
+    if (storeState?.room) {
+      this.syncView(storeState.room);
+    }
     const profile = getProfile() || {};
     this.profileName = profile?.name || "";
     const openId = await getOpenId().catch(() => "");
@@ -53,7 +69,14 @@ Page({
       wx.showToast({ title: "房间不存在", icon: "none" });
       return;
     }
-    this.syncView(table);
+    updateRoomStore(table);
+  },
+
+  onUnload() {
+    if (this.unsubscribeRoomStore) {
+      this.unsubscribeRoomStore();
+      this.unsubscribeRoomStore = null;
+    }
   },
 
   syncView(table) {
