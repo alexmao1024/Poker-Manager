@@ -1,5 +1,23 @@
 const assert = require("node:assert/strict");
 const { mapAction } = require("../router");
 
-assert.equal(typeof mapAction("create"), "function");
+const actions = [
+  "create",
+  "applyAction",
+  "joinRoom",
+  "leaveRoom",
+  "reorderPlayers",
+  "setAutoStage",
+  "setActionTimeout",
+  "startRoom",
+  "updateProfile",
+  "endRound",
+  "resetRound",
+  "finishRoom",
+];
+
+actions.forEach((action) => {
+  assert.equal(typeof mapAction(action), "function");
+});
+
 assert.equal(mapAction("unknown"), null);

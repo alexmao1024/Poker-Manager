@@ -1093,7 +1093,20 @@ async function finishRoom(id, openId) {
   return { ok: true };
 }
 
-const mapAction = createMapAction({ createRoom, joinRoom, applyRoomAction });
+const mapAction = createMapAction({
+  createRoom,
+  joinRoom,
+  applyRoomAction,
+  leaveRoom,
+  reorderPlayers,
+  setAutoStage,
+  setActionTimeout,
+  startRoom,
+  updateProfile,
+  endRoomRound,
+  resetRoomRound,
+  finishRoom,
+});
 
 exports.main = async (event) => {
   const action = event?.action;
@@ -1104,42 +1117,6 @@ exports.main = async (event) => {
   const handler = mapAction(action);
   if (handler) {
     return handler(event, openId);
-  }
-
-  if (action === "leaveRoom") {
-    return leaveRoom(payload?.id, openId);
-  }
-
-  if (action === "reorderPlayers") {
-    return reorderPlayers(payload?.id, payload?.order, openId);
-  }
-
-  if (action === "setAutoStage") {
-    return setAutoStage(payload?.id, payload?.enabled, openId);
-  }
-
-  if (action === "setActionTimeout") {
-    return setActionTimeout(payload?.id, payload?.actionTimeoutSec, openId);
-  }
-
-  if (action === "startRoom") {
-    return startRoom(payload?.id, openId);
-  }
-
-  if (action === "updateProfile") {
-    return updateProfile(payload?.id, payload?.profile, openId);
-  }
-
-  if (action === "endRound") {
-    return endRoomRound(payload?.id, payload?.expected, openId, payload?.winnersByPot);
-  }
-
-  if (action === "resetRound") {
-    return resetRoomRound(payload?.id, payload?.expected, payload?.profileName, openId);
-  }
-
-  if (action === "finishRoom") {
-    return finishRoom(payload?.id, openId);
   }
 
   throw new Error("UNKNOWN_ACTION");
