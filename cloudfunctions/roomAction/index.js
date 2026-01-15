@@ -1,4 +1,5 @@
 const cloud = require("wx-server-sdk");
+const { createMapAction } = require("./router");
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
@@ -1092,29 +1093,17 @@ async function finishRoom(id, openId) {
   return { ok: true };
 }
 
+const mapAction = createMapAction({ createRoom, joinRoom, applyRoomAction });
+
 exports.main = async (event) => {
   const action = event?.action;
   const payload = event?.payload;
   const wxContext = cloud.getWXContext();
   const openId = wxContext.OPENID;
 
-  if (action === "create") {
-    return createRoom(payload?.payload, payload?.profile, openId);
-  }
-
-  if (action === "applyAction") {
-    return applyRoomAction(
-      payload?.id,
-      payload?.type,
-      Number(payload?.raiseTo || 0),
-      payload?.expected,
-      openId
-    );
-  }
-
-
-  if (action === "joinRoom") {
-    return joinRoom(payload?.id, payload?.profile, openId);
+  const handler = mapAction(action);
+  if (handler) {
+    return handler(event, openId);
   }
 
   if (action === "leaveRoom") {
