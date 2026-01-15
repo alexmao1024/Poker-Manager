@@ -3,6 +3,8 @@
 .DS_Store
 Thumbs.db
 
+.worktrees/
+
 node_modules/
 miniprogram_npm/
 cloudfunctions/**/node_modules/
