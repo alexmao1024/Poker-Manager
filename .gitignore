@@ -4,6 +4,8 @@
 Thumbs.db
 
 .worktrees/
+.serena/
+docs/plans/
 
 node_modules/
 miniprogram_npm/
