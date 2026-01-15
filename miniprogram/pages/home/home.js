@@ -2,9 +2,11 @@ const { defaultConfig, getProfile, saveProfile } = require("../../utils/storage"
 const { ensureCloudAvatar } = require("../../utils/avatar");
 const { createRoom, joinRoomByCode, getMyRoom, updateProfile } = require("../../utils/roomService");
 const { getOpenId } = require("../../utils/cloud");
+const { createRoomStore } = require("../../stores/roomStore");
 
 const defaultName = "玩家1";
 const REQUEST_TIMEOUT = 8000;
+const roomStore = createRoomStore();
 
 function withTimeout(promise, timeoutMs) {
   let timer = null;
@@ -21,6 +23,17 @@ function buildProfile(userInfo) {
     name: userInfo?.nickName || defaultName,
     avatar: userInfo?.avatarUrl || "",
   };
+}
+
+function normalizeExistingRoom(room) {
+  if (!room) return null;
+  const id = room.id || room._id;
+  if (!id) return { ...room };
+  return { ...room, id };
+}
+
+function updateRoomStore(room) {
+  roomStore.setState({ room: normalizeExistingRoom(room) });
 }
 
 Page({
@@ -46,11 +59,25 @@ Page({
   },
 
   onLoad() {
+    this.unsubscribeRoomStore = roomStore.subscribe((state) => {
+      this.setData({ existingRoom: state.room });
+    });
+    const storeState = roomStore.getState();
+    if (storeState?.room) {
+      this.setData({ existingRoom: storeState.room });
+    }
     const profile = getProfile() || { name: defaultName, avatar: "" };
     this.setProfile(profile);
     this.resetForm(profile);
     this.loadVersionInfo();
     this.syncCloudAvatar(profile);
+  },
+
+  onUnload() {
+    if (this.unsubscribeRoomStore) {
+      this.unsubscribeRoomStore();
+      this.unsubscribeRoomStore = null;
+    }
   },
 
   onShow() {
@@ -113,17 +140,17 @@ Page({
     try {
       const openId = await getOpenId().catch(() => "");
       if (!openId) {
-        this.setData({ existingRoom: null });
+        updateRoomStore(null);
         return;
       }
       const room = await getMyRoom(openId);
       if (!room) {
-        this.setData({ existingRoom: null });
+        updateRoomStore(null);
         return;
       }
-      this.setData({ existingRoom: { ...room, id: room._id } });
+      updateRoomStore(room);
     } catch (err) {
-      this.setData({ existingRoom: null });
+      updateRoomStore(null);
     }
   },
 
@@ -217,7 +244,7 @@ Page({
       if (table.existing) {
         wx.showToast({ title: "已在房间，已进入", icon: "none" });
       }
-      this.setData({ existingRoom: { ...table, id: table._id } });
+      updateRoomStore(table);
     } catch (err) {
       const msg = err?.message || err?.errMsg || "";
       if (msg.includes("TIMEOUT")) {
@@ -247,6 +274,7 @@ Page({
       this.setData({ showJoin: false });
       const target = table.status === "lobby" ? "lobby" : "table";
       wx.navigateTo({ url: `/pages/${target}/${target}?id=${table._id}` });
+      updateRoomStore(table);
     } catch (err) {
       const msg = err?.message || err?.errMsg || "";
       if (msg.includes("TIMEOUT")) {
