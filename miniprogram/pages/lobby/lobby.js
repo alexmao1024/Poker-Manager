@@ -17,6 +17,9 @@ const {
   fetchCloudAvatarUrls,
   normalizeCloudFileId,
 } = require("../../utils/avatar");
+const { createRoomStore } = require("../../stores/roomStore");
+
+const roomStore = createRoomStore();
 
 function buildPlayersView(players, openId, hostOpenId, hostName) {
   const list = players || [];
@@ -41,6 +44,10 @@ function buildPlayersView(players, openId, hostOpenId, hostName) {
       positionTag,
     };
   });
+}
+
+function updateRoomStore(room) {
+  roomStore.setState({ room: room || null });
 }
 
 Page({
@@ -75,6 +82,15 @@ Page({
     this.profile = profile;
     this.setData({ profileName: profile?.name || "" });
     this.roomId = query.id;
+    roomStore.setState({ roomId: this.roomId });
+    this.unsubscribeRoomStore = roomStore.subscribe((state) => {
+      if (!state.room) return;
+      this.syncView(state.room);
+    });
+    const storeState = roomStore.getState();
+    if (storeState?.room) {
+      this.syncView(storeState.room);
+    }
 
     const openId = await getOpenId().catch(() => "");
     if (openId) this.setData({ openId });
@@ -89,7 +105,7 @@ Page({
       wx.redirectTo({ url: `/pages/table/table?id=${this.roomId}` });
       return;
     }
-    this.syncView(room);
+    updateRoomStore(room);
 
     joinRoom(this.roomId, profile).catch((err) => {
       const code = this.getErrorCode(err);
@@ -126,6 +142,10 @@ Page({
       this.roomWatcher.close();
       this.roomWatcher = null;
     }
+    if (this.unsubscribeRoomStore) {
+      this.unsubscribeRoomStore();
+      this.unsubscribeRoomStore = null;
+    }
   },
 
   onHide() {
@@ -147,7 +167,7 @@ Page({
           return;
         }
         this.handleNotice(room.notice);
-        this.syncView(room);
+        updateRoomStore(room);
       },
       onError: () => {
         wx.showToast({ title: "同步断开，正在重连", icon: "none" });
@@ -180,7 +200,7 @@ Page({
       wx.redirectTo({ url: `/pages/table/table?id=${this.roomId}` });
       return;
     }
-    this.syncView(room);
+    updateRoomStore(room);
   },
 
   handleNotice(notice) {
