@@ -7,8 +7,11 @@ const {
   generateCode,
 } = require("./storage");
 const { getDb } = require("./cloud");
+const { createRoomService } = require("../services/roomService");
+const { callFunction } = require("../adapters/cloud");
 
 const ROOMS = "rooms";
+const roomService = createRoomService(callFunction);
 
 function buildRoom(payload, profile, openId) {
   const now = Date.now();
@@ -173,4 +176,6 @@ module.exports = {
   resetRound,
   finishRoom,
   reorderPlayers,
+  createRoomService,
+  roomService,
 };
