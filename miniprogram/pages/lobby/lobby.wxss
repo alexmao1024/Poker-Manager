@@ -30,6 +30,15 @@
   color: var(--ink-400);
 }
 
+.meta-secondary {
+  margin-top: 6rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6rpx 14rpx;
+  color: var(--ink-400);
+  font-size: 22rpx;
+}
+
 .timeout-input {
   width: 140rpx;
   text-align: right;
