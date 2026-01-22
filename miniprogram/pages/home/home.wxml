@@ -40,10 +40,29 @@
 
     <view wx:if="{{showCreate}}" class="panel form-panel fade-in delay-2">
       <view class="form-row">
-        <text class="form-label">座位数</text>
-        <input class="form-input" type="number" placeholder="2 - 9" value="{{form.seatCount}}" bindinput="onInputSeatCount" />
+        <text class="form-label">玩法</text>
+        <view class="segmented">
+          <button
+            class="segmented-btn {{form.gameType === 'texas' ? 'is-active' : ''}}"
+            data-type="texas"
+            bindtap="onSelectGameType"
+          >
+            德州
+          </button>
+          <button
+            class="segmented-btn {{form.gameType === 'zhajinhua' ? 'is-active' : ''}}"
+            data-type="zhajinhua"
+            bindtap="onSelectGameType"
+          >
+            炸金花
+          </button>
+        </view>
       </view>
-      <view class="form-grid">
+      <view class="form-row">
+        <text class="form-label">座位数</text>
+        <input class="form-input" type="number" placeholder="2 - 12" value="{{form.seatCount}}" bindinput="onInputSeatCount" />
+      </view>
+      <view class="form-grid" wx:if="{{form.gameType === 'texas'}}">
         <view class="form-row">
           <text class="form-label">起始积分</text>
           <input class="form-input" type="number" value="{{form.stack}}" bindinput="onInputStack" />
@@ -55,6 +74,24 @@
         <view class="form-row">
           <text class="form-label">大盲积分</text>
           <input class="form-input" type="number" value="{{form.bb}}" bindinput="onInputBb" />
+        </view>
+      </view>
+      <view class="form-grid" wx:else>
+        <view class="form-row">
+          <text class="form-label">底注</text>
+          <input class="form-input" type="number" value="{{form.zhjBaseBet}}" bindinput="onInputZhjBaseBet" />
+        </view>
+        <view class="form-row">
+          <text class="form-label">买入积分</text>
+          <input class="form-input" type="number" value="{{form.zhjBuyIn}}" bindinput="onInputZhjBuyIn" />
+        </view>
+        <view class="form-row">
+          <text class="form-label">封顶轮数</text>
+          <input class="form-input" type="number" value="{{form.zhjMaxRounds}}" bindinput="onInputZhjMaxRounds" />
+        </view>
+        <view class="form-row">
+          <text class="form-label">最早看牌轮数</text>
+          <input class="form-input" type="number" value="{{form.zhjMinSeeRound}}" bindinput="onInputZhjMinSeeRound" />
         </view>
       </view>
       <button class="btn btn-home btn-home-primary form-submit" bindtap="createTable">进入房间</button>

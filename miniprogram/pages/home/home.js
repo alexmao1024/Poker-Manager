@@ -1,4 +1,6 @@
 const { defaultConfig, getProfile, saveProfile } = require("../../utils/storage");
+const { GAME_TYPES, defaultGameRules } = require("../../utils/gameConfig");
+const { buildCreateRoomPayload } = require("../../utils/roomPayloads");
 const { ensureCloudAvatar } = require("../../utils/avatar");
 const { createRoom, joinRoomByCode, getMyRoom, updateProfile } = require("../../utils/roomService");
 const { getOpenId } = require("../../utils/cloud");
@@ -51,10 +53,15 @@ Page({
     },
     profileInitial: "我",
     form: {
+      gameType: GAME_TYPES.TEXAS,
       seatCount: 6,
       stack: defaultConfig.stack,
       sb: defaultConfig.blinds.sb,
       bb: defaultConfig.blinds.bb,
+      zhjBaseBet: defaultGameRules.zhj.baseBet,
+      zhjBuyIn: defaultGameRules.zhj.buyIn,
+      zhjMaxRounds: defaultGameRules.zhj.maxRounds,
+      zhjMinSeeRound: defaultGameRules.zhj.minSeeRound,
     },
   },
 
@@ -188,6 +195,11 @@ Page({
   onInputSeatCount(e) {
     this.setData({ "form.seatCount": Number(e.detail.value || 0) });
   },
+  onSelectGameType(e) {
+    const gameType = e?.currentTarget?.dataset?.type;
+    if (!gameType) return;
+    this.setData({ "form.gameType": gameType });
+  },
   onInputStack(e) {
     this.setData({ "form.stack": Number(e.detail.value || 0) });
   },
@@ -196,6 +208,18 @@ Page({
   },
   onInputBb(e) {
     this.setData({ "form.bb": Number(e.detail.value || 0) });
+  },
+  onInputZhjBaseBet(e) {
+    this.setData({ "form.zhjBaseBet": Number(e.detail.value || 0) });
+  },
+  onInputZhjBuyIn(e) {
+    this.setData({ "form.zhjBuyIn": Number(e.detail.value || 0) });
+  },
+  onInputZhjMaxRounds(e) {
+    this.setData({ "form.zhjMaxRounds": Number(e.detail.value || 0) });
+  },
+  onInputZhjMinSeeRound(e) {
+    this.setData({ "form.zhjMinSeeRound": Number(e.detail.value || 0) });
   },
   onInputJoin(e) {
     this.setData({ joinCode: e.detail.value });
@@ -209,8 +233,7 @@ Page({
       return;
     }
     const form = this.data.form;
-    const stack = Number(form.stack) || defaultConfig.stack;
-    const seatCount = Math.min(9, Math.max(2, Number(form.seatCount) || 0));
+    const seatCount = Number(form.seatCount) || 0;
     if (seatCount < 2) {
       wx.showToast({ title: "座位数至少 2", icon: "none" });
       return;
@@ -222,16 +245,10 @@ Page({
     this.creatingRoom = true;
     wx.showLoading({ title: "创建中" });
     try {
+      const payload = buildCreateRoomPayload(form);
       const table = await withTimeout(
         createRoom(
-          {
-            maxSeats: seatCount,
-            stack,
-            blinds: {
-              sb: Number(form.sb) || defaultConfig.blinds.sb,
-              bb: Number(form.bb) || defaultConfig.blinds.bb,
-            },
-          },
+          payload,
           profile
         ),
         REQUEST_TIMEOUT
