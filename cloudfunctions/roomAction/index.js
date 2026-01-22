@@ -1,5 +1,6 @@
 const cloud = require("wx-server-sdk");
 const { createMapAction } = require("./router");
+const { normalizeGameRules } = require("./domain/gameRules");
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
@@ -161,16 +162,24 @@ async function createRoom(payload, profile, openId) {
       return { _id: existing.data[0]._id, ...existing.data[0], existing: true };
     }
   }
-  const maxSeatsRaw = Number(payload?.maxSeats ?? payload?.players?.length);
-  const maxSeats =
-    Number.isFinite(maxSeatsRaw) && maxSeatsRaw >= 2 ? Math.min(9, maxSeatsRaw) : 6;
+  const normalized = normalizeGameRules(payload?.gameType, payload?.gameRules || payload);
+  const maxSeats = normalized.rules.maxSeats;
   if (maxSeats < 2) {
     throw new Error("INVALID_PLAYERS");
   }
-  const stackRaw = Number(payload?.stack);
+  const stackRaw =
+    normalized.gameType === "zhajinhua"
+      ? Number(normalized.rules.buyIn)
+      : Number(normalized.rules.stack);
   const stack = Number.isFinite(stackRaw) && stackRaw > 0 ? stackRaw : defaultConfig.stack;
-  const blinds = normalizeBlinds(payload?.blinds);
-  const actionTimeoutSec = normalizeTimeoutSec(payload?.actionTimeoutSec);
+  const blinds =
+    normalized.gameType === "zhajinhua"
+      ? { sb: normalized.rules.baseBet, bb: normalized.rules.baseBet }
+      : normalizeBlinds(normalized.rules.blinds);
+  const actionTimeoutSec =
+    normalized.gameType === "zhajinhua"
+      ? defaultConfig.actionTimeoutSec
+      : normalizeTimeoutSec(normalized.rules.actionTimeoutSec);
   const players = [
     buildPlayer(profile?.name || "房主", safeAvatar, openId, stack, "active"),
   ];
@@ -183,6 +192,8 @@ async function createRoom(payload, profile, openId) {
       createdAt: now,
       updatedAt: now,
       status: "lobby",
+    gameType: normalized.gameType,
+    gameRules: normalized.rules,
     blinds,
     stack,
     maxSeats,
