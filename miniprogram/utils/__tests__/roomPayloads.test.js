@@ -8,6 +8,7 @@ const payload = buildCreateRoomPayload({
   zhjBuyIn: 2000,
   zhjMaxRounds: 20,
   zhjMinSeeRound: 3,
+  zhjCompareAfter: 4,
 });
 
 assert.equal(payload.gameType, "zhajinhua");
@@ -15,3 +16,4 @@ assert.equal(payload.maxSeats, 6);
 assert.equal(payload.stack, 2000);
 assert.equal(payload.gameRules.baseBet, 10);
 assert.equal(payload.gameRules.maxRounds, 20);
+assert.equal(payload.gameRules.compareAllowedAfter, 4);

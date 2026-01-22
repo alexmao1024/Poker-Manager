@@ -62,6 +62,7 @@ Page({
       zhjBuyIn: defaultGameRules.zhj.buyIn,
       zhjMaxRounds: defaultGameRules.zhj.maxRounds,
       zhjMinSeeRound: defaultGameRules.zhj.minSeeRound,
+      zhjCompareAfter: defaultGameRules.zhj.compareAllowedAfter,
     },
   },
 
@@ -220,6 +221,9 @@ Page({
   },
   onInputZhjMinSeeRound(e) {
     this.setData({ "form.zhjMinSeeRound": Number(e.detail.value || 0) });
+  },
+  onInputZhjCompareAfter(e) {
+    this.setData({ "form.zhjCompareAfter": Number(e.detail.value || 0) });
   },
   onInputJoin(e) {
     this.setData({ joinCode: e.detail.value });

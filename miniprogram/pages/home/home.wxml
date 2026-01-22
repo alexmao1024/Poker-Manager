@@ -93,6 +93,10 @@
           <text class="form-label">最早看牌轮数</text>
           <input class="form-input" type="number" value="{{form.zhjMinSeeRound}}" bindinput="onInputZhjMinSeeRound" />
         </view>
+        <view class="form-row">
+          <text class="form-label">最早比牌轮数</text>
+          <input class="form-input" type="number" value="{{form.zhjCompareAfter}}" bindinput="onInputZhjCompareAfter" />
+        </view>
       </view>
       <button class="btn btn-home btn-home-primary form-submit" bindtap="createTable">进入房间</button>
     </view>

@@ -8,6 +8,7 @@ function buildCreateRoomPayload(form) {
     const buyIn = Number(form?.zhjBuyIn || rules.buyIn);
     const maxRounds = Number(form?.zhjMaxRounds || rules.maxRounds);
     const minSeeRound = Number(form?.zhjMinSeeRound || rules.minSeeRound);
+    const compareAllowedAfter = Number(form?.zhjCompareAfter || rules.compareAllowedAfter);
     const maxSeats = Number(form?.seatCount || rules.maxSeats);
     return {
       gameType,
@@ -18,7 +19,7 @@ function buildCreateRoomPayload(form) {
         buyIn,
         maxRounds,
         minSeeRound,
-        compareAllowedAfter: rules.compareAllowedAfter,
+        compareAllowedAfter,
         rebuyLimit: buyIn,
         special235: true,
       },
