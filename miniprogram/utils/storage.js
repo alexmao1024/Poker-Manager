@@ -1,10 +1,9 @@
+const { defaultGameRules } = require("./gameConfig");
+
 const TABLES_KEY = "chip_score_tables_v1";
 const PROFILE_KEY = "chip_score_profile_v1";
 
-const defaultConfig = {
-  blinds: { sb: 10, bb: 20 },
-  stack: 2000,
-};
+const defaultConfig = defaultGameRules.texas;
 
 function loadTables() {
   return wx.getStorageSync(TABLES_KEY) || [];
