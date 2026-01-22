@@ -14,6 +14,9 @@ function createRoomService(callFn) {
     getMyRoom(openId) {
       return call("getMyRoom", { openId });
     },
+    applyAction(roomId, payload) {
+      return call("applyAction", { roomId, ...payload });
+    },
   };
 }
 
