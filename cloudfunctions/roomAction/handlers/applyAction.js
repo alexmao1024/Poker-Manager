@@ -7,7 +7,9 @@ function applyActionHandler(deps) {
       payload?.type,
       Number(payload?.raiseTo || 0),
       payload?.expected,
-      openId
+      openId,
+      payload?.targetId,
+      payload?.result
     );
   };
 }

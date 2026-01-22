@@ -254,4 +254,63 @@ function applyZhjAction({ table, type, raiseTo, targetId, result, expected, open
   };
 }
 
-module.exports = { calcPayAmount, canCompare, advanceRound, applyZhjAction };
+function startZhjRound({ table, now, dealerIndex }) {
+  const rules = table.gameRules || {};
+  const baseBet = Number(rules.baseBet || 0);
+  const players = (table.players || []).map((player) => ({ ...player }));
+  const safeDealerIndex = Math.min(dealerIndex || 0, Math.max(0, players.length - 1));
+
+  players.forEach((player) => {
+    player.bet = 0;
+    player.handBet = 0;
+    player.actedRound = 0;
+    player.seen = false;
+    if (player.stack > 0) {
+      player.status = "active";
+    } else {
+      player.status = "out";
+    }
+  });
+
+  players.forEach((player) => {
+    if (player.status !== "active") return;
+    const pay = Math.min(baseBet, player.stack);
+    player.stack -= pay;
+    player.handBet += pay;
+    if (player.stack === 0) {
+      player.status = "allin";
+    }
+  });
+
+  const pot = players.reduce((sum, player) => sum + (player.handBet || 0), 0);
+  const zjhRoundCount = 1;
+  const round = "betting";
+  const turnExpiresAt = calcTurnExpiresAt(
+    now,
+    Number(table.actionTimeoutSec || 0),
+    round,
+    players.some((player) => player.status === "active")
+  );
+
+  return {
+    players,
+    round,
+    roundId: zjhRoundCount,
+    zjhRoundCount,
+    zjhStage: "betting",
+    dealerIndex: safeDealerIndex,
+    turnIndex: safeDealerIndex,
+    pot,
+    turnExpiresAt,
+    settled: false,
+    log: [],
+  };
+}
+
+module.exports = {
+  calcPayAmount,
+  canCompare,
+  advanceRound,
+  applyZhjAction,
+  startZhjRound,
+};

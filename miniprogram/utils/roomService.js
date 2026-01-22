@@ -138,8 +138,8 @@ function watchRoom(id, handlers) {
   });
 }
 
-async function applyAction(id, type, raiseTo, expected) {
-  return callRoomAction("applyAction", { id, type, raiseTo, expected });
+async function applyAction(id, type, raiseTo, expected, targetId, result) {
+  return callRoomAction("applyAction", { id, type, raiseTo, expected, targetId, result });
 }
 
 async function endRound(id, expected, winnersByPot) {
