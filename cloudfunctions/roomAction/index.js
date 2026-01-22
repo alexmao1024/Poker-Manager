@@ -2,6 +2,7 @@ const cloud = require("wx-server-sdk");
 const { createMapAction } = require("./router");
 const { applyZhjAction, startZhjRound } = require("./domain/zhajinhua");
 const { settlePot } = require("./domain/settlement");
+const { validateRebuy } = require("./domain/rebuy");
 const { normalizeGameRules } = require("./domain/gameRules");
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
@@ -1200,6 +1201,36 @@ async function resetRoomRound(id, expected, profileName, openId) {
   return { ok: true };
 }
 
+async function rebuy(id, amount, openId) {
+  if (!openId) {
+    throw new Error("NO_OPENID");
+  }
+  const now = Date.now();
+  await db.runTransaction(async (tx) => {
+    const doc = await tx.collection(ROOMS).doc(id).get();
+    const table = doc.data;
+    if (!table) {
+      throw new Error("NOT_FOUND");
+    }
+    const value = validateRebuy(table, amount);
+    const players = (table.players || []).map((player) => ({ ...player }));
+    const playerIndex = players.findIndex((player) => player.openId === openId);
+    if (playerIndex < 0) {
+      throw new Error("NOT_FOUND");
+    }
+    const player = { ...players[playerIndex] };
+    player.stack += value;
+    players[playerIndex] = player;
+    await tx.collection(ROOMS).doc(id).update({
+      data: {
+        players,
+        updatedAt: now,
+      },
+    });
+  });
+  return { ok: true };
+}
+
 async function finishRoom(id, openId) {
   if (!id) {
     throw new Error("NOT_FOUND");
@@ -1228,6 +1259,7 @@ const mapAction = createMapAction({
   updateProfile,
   endRoomRound,
   resetRoomRound,
+  rebuy,
   finishRoom,
 });
 
