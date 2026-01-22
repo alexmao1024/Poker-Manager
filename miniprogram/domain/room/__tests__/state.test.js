@@ -13,3 +13,7 @@ assert.equal(getNextActiveIndex(players, 0), 2);
 const room = normalizeRoom({ players, round: "flop" });
 assert.equal(room.round, "flop");
 assert.equal(room.players.length, 3);
+
+const zhjRoom = normalizeRoom({ gameType: "zhajinhua", zjhRoundCount: 2 });
+assert.equal(zhjRoom.gameType, "zhajinhua");
+assert.equal(zhjRoom.zjhRoundCount, 2);
