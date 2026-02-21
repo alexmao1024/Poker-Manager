@@ -138,8 +138,8 @@ function watchRoom(id, handlers) {
   });
 }
 
-async function applyAction(id, type, raiseTo, expected) {
-  return callRoomAction("applyAction", { id, type, raiseTo, expected });
+async function applyAction(id, type, raiseTo, expected, targetId, result) {
+  return callRoomAction("applyAction", { id, type, raiseTo, expected, targetId, result });
 }
 
 async function endRound(id, expected, winnersByPot) {
@@ -148,6 +148,10 @@ async function endRound(id, expected, winnersByPot) {
 
 async function resetRound(id, expected, profileName) {
   return callRoomAction("resetRound", { id, expected, profileName });
+}
+
+async function rebuy(id, amount) {
+  return callRoomAction("rebuy", { id, amount });
 }
 
 async function finishRoom(id) {
@@ -174,6 +178,7 @@ module.exports = {
   applyAction,
   endRound,
   resetRound,
+  rebuy,
   finishRoom,
   reorderPlayers,
   createRoomService,

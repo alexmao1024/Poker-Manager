@@ -1,42 +1,56 @@
-# ZhaJinHua Scoring Mode Design
+# 炸金花模式设计稿
 
-## Goals
-- Add a ZhaJinHua mode that uses chips/pot and turn-based actions without exposing cards.
-- Keep the UI simple and defaults safe (auto-advance on, minimal required inputs).
-- Reuse the existing room/membership/sync mechanics so new games can be added later.
+日期：2026-01-22
 
-## Architecture
-- Split logic into a room core and a game rules module.
-- Room core owns: members, seats, stack balances, rebuy, synchronization, host permissions, and common state fields (roundId, turnIndex, dealerIndex, pot, settled, autoStage).
-- Rules module owns: game-specific validation and state transitions (actions, round flow, showdown, and restrictions).
-- Introduce `gameType` (`texas`, `zhajinhua`) and `gameRules` on room documents. ZhaJinHua rules are stored under `gameRules.zjh`.
-- UI is composed of a shared room shell with a game panel that swaps by `gameType`.
+## 背景与目标
+- 小程序为线下计分工具，只记录筹码与阶段，不涉及发牌或看牌显示。
+- 现有德州房间流程保持不变，新增炸金花模式，支持常见线下规则并尽量自动化。
+- 删除“自动推进阶段”设置，房间默认自动推进，减少用户配置负担。
 
-## ZhaJinHua Rules (configurable)
-- baseBet (required), buyIn (required), maxSeats (<= 12), maxRounds (default 20), minSeeRound (default 3).
-- compareAllowedAfter (default 3), special235 = true, rebuyLimit = buyIn.
-- First dealer is seat 1; subsequent dealer is previous hand winner; action proceeds clockwise and dealer acts first.
-- Bets are entered using dark bet units; seen players pay 2x.
-- Raise minimum is `currentCall + baseBet` in dark bet units.
-- Compare costs the initiator their current call amount; blind players must see first.
-- Round cap triggers forced showdown with host selecting winners; ties split the pot.
+## 范围与关键需求
+- 新增玩法类型：德州 / 炸金花（create room 选择）。
+- 炸金花规则参数：底注、买入积分、封顶轮数、最早看牌轮数、可比牌轮数（默认 3）。
+- 比牌结果支持：赢 / 输 / 平局（平局按发起者输）。
+- 中途买入/补码（Rebuy），由房主自定义额度与频次。
 
-## Data Model
-- Room: gameType, gameRules, zjhRoundCount, zjhStage.
-- Player: seen, handBet, actedRound, status (active/fold/allin/out).
-- Core fields remain: pot, turnIndex, dealerIndex, roundId, settled, autoStage.
+## 架构与数据模型
+- 房间保存 gameType 和 gameRules（炸金花规则），桌面 table 按 gameType 走不同逻辑分支。
+- 炸金花玩家状态：
+  - bet（名义注额，用于判断跟注与轮次推进）
+  - handBet（实际扣分，用于展示本局投入与结算）
+  - seen（已看牌）
+  - status（active/allin/fold/out）
+- 回合推进条件：仍可行动玩家本轮都已行动且名义注额一致；达到封顶轮数或仅剩 1 人进入 showdown。
 
-## UI Flow
-- Create room: base bet, buy-in, max seats, max rounds, min see round.
-- Table view: only show valid actions per turn (blind follow/raise/see/fold, seen follow/raise/compare, all-in).
-- Forced showdown: host selects winner(s), with split option.
-- Between hands: allow rebuy (<= buy-in), seat reorder, and start next hand.
+## 前端与交互
+- Lobby：显示玩法与规则摘要；炸金花仅显示“庄”标签。
+- Table：按 gameType 切换操作区。
+  - 炸金花操作：闷跟/明跟、加注、看牌、比牌、全下、弃牌。
+  - 比牌弹窗：选择目标与结果（赢/输/平局）。
+  - 玩家卡片展示本局投入、看牌状态标签。
+- 自动阶段推进移除设置项；默认自动推进。
 
-## Error Handling
-- Enforce expected state (turnIndex, roundId, settled) to avoid stale updates.
-- Validate action permissions (turn owner, min see round, compare availability, sufficient stack).
-- Ensure caps (max rounds, max seats, rebuy limit).
+## 规则处理与错误提示
+- 比牌门槛：需已看牌且达到可比牌轮数；支付一次跟注额度（按看牌倍率）。
+- 平局：发起者判负。
+- 错误码映射中文提示：
+  - CANNOT_SEE：未到可看牌轮数
+  - CANNOT_COMPARE：未到可比牌轮数
+  - NO_TARGET：请选择对手
+  - INVALID_TARGET：对手不可比
+  - RAISE_TOO_LOW / INVALID_RAISE：加注不足或无效
 
-## Testing
-- Unit tests for rule transitions (betting, compare, forced showdown).
-- Integration tests for room actions, including rebuy and seat reorder in ZhaJinHua mode.
+## 测试与验收
+- 云端单测：
+  - 比牌门槛、平局判负、比牌支付倍率
+  - 封顶轮数强制 showdown
+  - allin/弃牌影响轮次推进
+  - rebuy 校验
+- 前端自测：
+  - 规则摘要与按钮显隐正确
+  - 下注/比牌动作参数正确
+  - 本局投入与当前基准注显示正确
+
+## 不做项
+- 不新增炸金花独立页面；复用现有房间与牌桌页面。
+- 不展示或模拟牌面逻辑，仅做积分与状态推进。

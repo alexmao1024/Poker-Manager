@@ -7,7 +7,6 @@ const {
   reorderPlayers,
   startRoom,
   finishRoom,
-  setAutoStage,
   setActionTimeout,
 } = require("../../utils/roomService");
 const { getOpenId } = require("../../utils/cloud");
@@ -21,7 +20,7 @@ const { createRoomStore } = require("../../stores/roomStore");
 
 const roomStore = createRoomStore();
 
-function buildPlayersView(players, openId, hostOpenId, hostName) {
+function buildPlayersView(players, openId, hostOpenId, hostName, gameType) {
   const list = players || [];
   return list.map((player, index) => {
     const isMine = player.openId && player.openId === openId;
@@ -31,10 +30,12 @@ function buildPlayersView(players, openId, hostOpenId, hostName) {
     let positionTag = "";
     if (index === 0) {
       positionTag = "庄";
-    } else if (index === 1) {
-      positionTag = "小盲";
-    } else if (index === 2) {
-      positionTag = "大盲";
+    } else if (gameType !== "zhajinhua") {
+      if (index === 1) {
+        positionTag = "小盲";
+      } else if (index === 2) {
+        positionTag = "大盲";
+      }
     }
     return {
       ...player,
@@ -217,7 +218,6 @@ Page({
       wx.redirectTo({ url: `/pages/table/table?id=${this.roomId}` });
       return;
     }
-    const autoStage = room.autoStage !== false;
     const timeoutSec = Number.isFinite(Number(room.actionTimeoutSec))
       ? Math.max(0, Number(room.actionTimeoutSec))
       : 60;
@@ -230,7 +230,8 @@ Page({
       room.players || [],
       this.data.openId,
       room.hostOpenId,
-      room.hostName
+      room.hostName,
+      room.gameType
     ).map((player) => {
       const rawAvatar = player.avatar || "";
       const normalized = normalizeCloudFileId(rawAvatar);
@@ -274,7 +275,7 @@ Page({
           }));
 
     this.setData({
-      room: { ...room, autoStage },
+      room: { ...room },
       playersView,
       isHost,
       canStart,
@@ -546,24 +547,6 @@ Page({
         return;
       }
       wx.showToast({ title: "开始失败", icon: "none" });
-    }
-  },
-
-  async onAutoStageChange(e) {
-    if (!this.roomId) return;
-    if (!this.data.isHost) return;
-    const enabled = !!e.detail.value;
-    const prev = this.data.room?.autoStage !== false;
-    try {
-      await setAutoStage(this.roomId, enabled);
-    } catch (err) {
-      const code = this.getErrorCode(err);
-      if (code === "NOT_HOST") {
-        wx.showToast({ title: "仅房主可修改", icon: "none" });
-      } else {
-        wx.showToast({ title: "更新失败", icon: "none" });
-      }
-      this.setData({ room: { ...this.data.room, autoStage: prev } });
     }
   },
 

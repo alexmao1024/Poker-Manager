@@ -10,6 +10,7 @@ const updateProfileHandler = require("./handlers/updateProfile");
 const endRoundHandler = require("./handlers/endRound");
 const resetRoundHandler = require("./handlers/resetRound");
 const finishRoomHandler = require("./handlers/finishRoom");
+const rebuyHandler = require("./handlers/rebuy");
 
 function createMapAction(deps) {
   const handlers = {
@@ -25,6 +26,7 @@ function createMapAction(deps) {
     endRound: endRoundHandler({ endRoomRound: deps?.endRoomRound }),
     resetRound: resetRoundHandler({ resetRoomRound: deps?.resetRoomRound }),
     finishRoom: finishRoomHandler({ finishRoom: deps?.finishRoom }),
+    rebuy: rebuyHandler({ rebuy: deps?.rebuy }),
   };
 
   return (action) => handlers[action] || null;
@@ -65,6 +67,9 @@ const mapAction = createMapAction({
     throw new Error("NOT_CONFIGURED");
   },
   finishRoom: () => {
+    throw new Error("NOT_CONFIGURED");
+  },
+  rebuy: () => {
     throw new Error("NOT_CONFIGURED");
   },
 });

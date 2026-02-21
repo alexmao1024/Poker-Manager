@@ -14,6 +14,7 @@ const actions = [
   "endRound",
   "resetRound",
   "finishRoom",
+  "rebuy",
 ];
 
 actions.forEach((action) => {

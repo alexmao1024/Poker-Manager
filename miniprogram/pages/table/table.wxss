@@ -399,6 +399,16 @@
   border-radius: 12rpx;
 }
 
+.rules-text {
+  margin-top: 12rpx;
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  color: var(--ink-200);
+  font-size: 24rpx;
+  line-height: 1.4;
+}
+
 .settle-card {
   width: calc(100% - 64rpx);
   max-width: 620rpx;
@@ -450,6 +460,14 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10rpx;
+}
+
+.compare-result {
+  margin-top: 16rpx;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  justify-content: center;
 }
 
 .settle-chip {

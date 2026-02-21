@@ -6,6 +6,10 @@ function normalizeRoom(room) {
     turnIndex: Number.isFinite(room?.turnIndex) ? room.turnIndex : 0,
     pot: Number(room?.pot || 0),
     players: Array.isArray(room?.players) ? room.players : [],
+    gameType: room?.gameType || "texas",
+    gameRules: room?.gameRules || null,
+    zjhRoundCount: Number.isFinite(room?.zjhRoundCount) ? room.zjhRoundCount : 0,
+    zjhStage: room?.zjhStage || "betting",
   };
 }
 

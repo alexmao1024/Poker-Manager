@@ -1,5 +1,9 @@
 const cloud = require("wx-server-sdk");
 const { createMapAction } = require("./router");
+const { applyZhjAction, startZhjRound } = require("./domain/zhajinhua");
+const { settlePot } = require("./domain/settlement");
+const { validateRebuy } = require("./domain/rebuy");
+const { normalizeGameRules } = require("./domain/gameRules");
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
@@ -161,16 +165,22 @@ async function createRoom(payload, profile, openId) {
       return { _id: existing.data[0]._id, ...existing.data[0], existing: true };
     }
   }
-  const maxSeatsRaw = Number(payload?.maxSeats ?? payload?.players?.length);
-  const maxSeats =
-    Number.isFinite(maxSeatsRaw) && maxSeatsRaw >= 2 ? Math.min(9, maxSeatsRaw) : 6;
+  const normalized = normalizeGameRules(payload?.gameType, payload?.gameRules || payload);
+  const maxSeats = normalized.rules.maxSeats;
   if (maxSeats < 2) {
     throw new Error("INVALID_PLAYERS");
   }
-  const stackRaw = Number(payload?.stack);
+  const isZhj = normalized.gameType === "zhajinhua";
+  const stackRaw = isZhj ? Number(normalized.rules.buyIn) : Number(normalized.rules.stack);
   const stack = Number.isFinite(stackRaw) && stackRaw > 0 ? stackRaw : defaultConfig.stack;
-  const blinds = normalizeBlinds(payload?.blinds);
-  const actionTimeoutSec = normalizeTimeoutSec(payload?.actionTimeoutSec);
+  const blinds =
+    isZhj
+      ? { sb: normalized.rules.baseBet, bb: normalized.rules.baseBet }
+      : normalizeBlinds(normalized.rules.blinds);
+  const actionTimeoutSec =
+    isZhj
+      ? defaultConfig.actionTimeoutSec
+      : normalizeTimeoutSec(normalized.rules.actionTimeoutSec);
   const players = [
     buildPlayer(profile?.name || "房主", safeAvatar, openId, stack, "active"),
   ];
@@ -183,12 +193,16 @@ async function createRoom(payload, profile, openId) {
       createdAt: now,
       updatedAt: now,
       status: "lobby",
+    gameType: normalized.gameType,
+    gameRules: normalized.rules,
     blinds,
     stack,
     maxSeats,
     actionTimeoutSec,
-    round: "preflop",
+    round: isZhj ? "betting" : "preflop",
     roundId: 1,
+    zjhRoundCount: isZhj ? 0 : undefined,
+    zjhStage: isZhj ? "lobby" : undefined,
     dealerIndex,
     turnIndex,
     pot: 0,
@@ -221,7 +235,7 @@ async function createRoom(payload, profile, openId) {
   return { _id: res._id, ...room };
 }
 
-async function applyRoomAction(id, type, raiseTo, expected, openId) {
+async function applyRoomAction(id, type, raiseTo, expected, openId, targetId, result) {
   const now = Date.now();
   await db.runTransaction(async (tx) => {
     const doc = await tx.collection(ROOMS).doc(id).get();
@@ -231,6 +245,25 @@ async function applyRoomAction(id, type, raiseTo, expected, openId) {
     }
     assertStarted(table);
     assertExpected(table, expected);
+    if (table.gameType === "zhajinhua") {
+      const updates = applyZhjAction({
+        table,
+        type,
+        raiseTo,
+        targetId,
+        result,
+        expected,
+        openId,
+        now,
+      });
+      await tx.collection(ROOMS).doc(id).update({
+        data: {
+          ...updates,
+          updatedAt: now,
+        },
+      });
+      return;
+    }
     if (table.round === "showdown") {
       throw new Error("ROUND_OVER");
     }
@@ -765,6 +798,26 @@ async function startRoom(id, openId) {
       throw new Error("NEED_PLAYERS");
     }
 
+    if (table.gameType === "zhajinhua") {
+      const startState = startZhjRound({ table, now, dealerIndex: 0 });
+      await tx.collection(ROOMS).doc(id).update({
+        data: {
+          status: "active",
+          ...startState,
+          lastActionPlayerId: null,
+          lastActionPrevBet: null,
+          lastActionPrevStack: null,
+          lastActionPrevStatus: null,
+          lastActionPrevHandBet: null,
+          lastActionTurnIndexBefore: null,
+          lastActionTurnIndexAfter: null,
+          zjhLastWinners: null,
+          updatedAt: now,
+        },
+      });
+      return;
+    }
+
     const dealerIndex = 0;
     const smallBlindIndex = getIndexByOffset(players.length, dealerIndex, 1);
     const bigBlindIndex = getIndexByOffset(players.length, dealerIndex, 2);
@@ -830,6 +883,39 @@ async function endRoomRound(id, expected, openId, winnersByPot) {
     }
 
     const players = (table.players || []).map((player) => ({ ...player }));
+    if (table.gameType === "zhajinhua") {
+      if (table.zjhStage !== "showdown") {
+        throw new Error("NOT_SHOWDOWN");
+      }
+      const potSelections = Array.isArray(winnersByPot) ? winnersByPot : [];
+      if (!potSelections.length) {
+        throw new Error("NO_WINNERS");
+      }
+      const nextPlayers = settlePot(players, potSelections);
+      const winnerIds = Array.from(
+        new Set(potSelections.flat().filter((item) => typeof item === "string"))
+      );
+      await tx.collection(ROOMS).doc(id).update({
+        data: {
+          players: nextPlayers,
+          round: "showdown",
+          pot: 0,
+          settled: true,
+          zjhStage: "showdown",
+          zjhLastWinners: winnerIds,
+          turnExpiresAt: null,
+          lastActionPlayerId: null,
+          lastActionPrevBet: null,
+          lastActionPrevStack: null,
+          lastActionPrevStatus: null,
+          lastActionPrevHandBet: null,
+          lastActionTurnIndexBefore: null,
+          lastActionTurnIndexAfter: null,
+          updatedAt: now,
+        },
+      });
+      return;
+    }
     if (table.round !== "showdown") {
       const activePlayers = players.filter((player) => player.status === "active");
       if (activePlayers.length > 0) {
@@ -1009,6 +1095,44 @@ async function resetRoomRound(id, expected, profileName, openId) {
       throw new Error("NOT_HOST");
     }
 
+    if (table.gameType === "zhajinhua") {
+      if (table.zjhStage !== "showdown" || !table.settled) {
+        throw new Error("NOT_SETTLED");
+      }
+      const originalPlayers = (table.players || []).map((player) => ({ ...player }));
+      const players = originalPlayers.filter((player) => !player.left);
+      const winnerId = Array.isArray(table.zjhLastWinners) ? table.zjhLastWinners[0] : null;
+      const rawDealerIndex = winnerId
+        ? players.findIndex((player) => player.id === winnerId)
+        : -1;
+      const fallbackDealerIndex = Math.min(
+        table.dealerIndex || 0,
+        Math.max(0, players.length - 1)
+      );
+      const dealerIndex = rawDealerIndex >= 0 ? rawDealerIndex : fallbackDealerIndex;
+      const startState = startZhjRound({
+        table: { ...table, players },
+        now,
+        dealerIndex,
+      });
+      await tx.collection(ROOMS).doc(id).update({
+        data: {
+          ...startState,
+          settled: false,
+          zjhLastWinners: null,
+          lastActionPlayerId: null,
+          lastActionPrevBet: null,
+          lastActionPrevStack: null,
+          lastActionPrevStatus: null,
+          lastActionPrevHandBet: null,
+          lastActionTurnIndexBefore: null,
+          lastActionTurnIndexAfter: null,
+          updatedAt: now,
+        },
+      });
+      return;
+    }
+
     const originalPlayers = (table.players || []).map((player) => ({ ...player }));
     const startDealerIndex = Math.min(table.dealerIndex || 0, Math.max(0, originalPlayers.length - 1));
     let nextDealerId = null;
@@ -1077,6 +1201,36 @@ async function resetRoomRound(id, expected, profileName, openId) {
   return { ok: true };
 }
 
+async function rebuy(id, amount, openId) {
+  if (!openId) {
+    throw new Error("NO_OPENID");
+  }
+  const now = Date.now();
+  await db.runTransaction(async (tx) => {
+    const doc = await tx.collection(ROOMS).doc(id).get();
+    const table = doc.data;
+    if (!table) {
+      throw new Error("NOT_FOUND");
+    }
+    const value = validateRebuy(table, amount);
+    const players = (table.players || []).map((player) => ({ ...player }));
+    const playerIndex = players.findIndex((player) => player.openId === openId);
+    if (playerIndex < 0) {
+      throw new Error("NOT_FOUND");
+    }
+    const player = { ...players[playerIndex] };
+    player.stack += value;
+    players[playerIndex] = player;
+    await tx.collection(ROOMS).doc(id).update({
+      data: {
+        players,
+        updatedAt: now,
+      },
+    });
+  });
+  return { ok: true };
+}
+
 async function finishRoom(id, openId) {
   if (!id) {
     throw new Error("NOT_FOUND");
@@ -1105,6 +1259,7 @@ const mapAction = createMapAction({
   updateProfile,
   endRoomRound,
   resetRoomRound,
+  rebuy,
   finishRoom,
 });
 

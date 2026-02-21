@@ -2,11 +2,11 @@ const { getProfile } = require("../../utils/storage");
 const {
   getRoomById,
   watchRoom,
-  applyAction,
+  applyAction: applyRoomAction,
   endRound,
   resetRound,
   leaveRoom,
-  setAutoStage,
+  rebuy,
 } = require("../../utils/roomService");
 const { getOpenId } = require("../../utils/cloud");
 const { formatRound } = require("../../utils/format");
@@ -18,6 +18,18 @@ const roomStore = createRoomStore();
 
 function calcCurrentBet(players) {
   return players.reduce((max, player) => Math.max(max, player.bet || 0), 0);
+}
+
+function calcZhjCurrentBet(players, baseBet) {
+  return Math.max(Number(baseBet || 0), calcCurrentBet(players));
+}
+
+function getZhjRoundLabel(table) {
+  if (table?.zjhStage === "showdown" || table?.round === "showdown") {
+    return "开牌";
+  }
+  const roundCount = Number.isFinite(table?.zjhRoundCount) ? table.zjhRoundCount : 1;
+  return `第${roundCount}轮`;
 }
 
 function statusLabel(status, isTurn) {
@@ -101,6 +113,7 @@ Page({
     currentBet: 0,
     currentPlayer: { name: "", stack: 0, bet: 0 },
     callNeed: 0,
+    displayCallNeed: 0,
     roundLabel: "",
     raiseTo: 0,
     stageActionLabel: "发三张",
@@ -123,7 +136,16 @@ Page({
     canSettle: false,
     canFold: false,
     canAllIn: false,
-    autoStage: true,
+    canSee: false,
+    canCompare: false,
+    showCompare: false,
+    compareTargets: [],
+    compareTargetId: "",
+    compareResult: "win",
+    canRebuy: false,
+    showRebuy: false,
+    rebuyAmount: 0,
+    rebuyLimit: 0,
     showHostGuide: false,
     turnLeft: 0,
   },
@@ -265,16 +287,33 @@ Page({
       ? Math.min(table.turnIndex || 0, players.length - 1)
       : 0;
     const currentPlayer = players[turnIndex] || { name: "", stack: 0, bet: 0 };
-    const currentBet = calcCurrentBet(players);
+    const gameType = table.gameType || "texas";
+    const isZhj = gameType === "zhajinhua";
+    const baseBet = Number(table.gameRules?.baseBet || 0);
+    const currentBet = isZhj
+      ? calcZhjCurrentBet(players, baseBet)
+      : calcCurrentBet(players);
     const callNeed = Math.max(currentBet - (currentPlayer.bet || 0), 0);
-    const raiseTo = currentBet > 0 ? currentBet + DEFAULT_RAISE : DEFAULT_RAISE;
+    const displayCallNeed = isZhj && currentPlayer.seen ? callNeed * 2 : callNeed;
+    const raiseTo = isZhj
+      ? currentBet + baseBet
+      : currentBet > 0
+        ? currentBet + DEFAULT_RAISE
+        : DEFAULT_RAISE;
     const dealerIndex = players.length ? (table.dealerIndex || 0) % players.length : 0;
     const smallBlindIndex = players.length ? (dealerIndex + 1) % players.length : 0;
     const bigBlindIndex = players.length ? (dealerIndex + 2) % players.length : 0;
     const roundBetSum = players.reduce((sum, player) => sum + (player.bet || 0), 0);
-    const displayPot = (table.pot || 0) + roundBetSum;
+    const displayPot = isZhj ? Number(table.pot || 0) : (table.pot || 0) + roundBetSum;
     const activePlayers = players.filter((player) => player.status === "active");
-    const roundId = Number.isFinite(table.roundId) ? table.roundId : 1;
+    const selfPlayer = players.find((player) => player.openId === this.data.openId) || null;
+    const roundId = isZhj
+      ? Number.isFinite(table.zjhRoundCount)
+        ? table.zjhRoundCount
+        : 1
+      : Number.isFinite(table.roundId)
+        ? table.roundId
+        : 1;
 
     const avatarErrorIds = this.avatarErrorIds || new Set();
     const avatarErrorSources = this.avatarErrorSources || new Map();
@@ -313,23 +352,31 @@ Page({
         nameInitial: (player.name || "座").trim().slice(0, 1),
         statusLabel: statusLabel(player.status, index === turnIndex),
         statusClass: `status-${player.status || "active"}`,
+        displayBet: isZhj ? Number(player.handBet || 0) : Number(player.bet || 0),
+        seenLabel: isZhj ? (player.seen ? "明牌" : "闷牌") : "",
         positionTag:
           index === dealerIndex
             ? "庄"
-            : index === bigBlindIndex
-              ? "大盲"
-              : index === smallBlindIndex
-                ? "小盲"
-                : "",
+            : isZhj
+              ? ""
+              : index === bigBlindIndex
+                ? "大盲"
+                : index === smallBlindIndex
+                  ? "小盲"
+                  : "",
       };
     });
 
     const hostByOpenId = table.hostOpenId && table.hostOpenId === this.data.openId;
     const hostByName = !table.hostOpenId && table.hostName === this.data.profileName;
     const isHost = !!hostByOpenId || !!hostByName;
-    const autoStage = table.autoStage !== false;
+    const autoStage = true;
     const isStarted = table.status === "active";
-    const roomStatusLabel = isStarted ? formatRound(table.round) : "等待开局";
+    const roomStatusLabel = isStarted
+      ? isZhj
+        ? getZhjRoundLabel(table)
+        : formatRound(table.round)
+      : "等待开局";
     const canAct =
       isStarted &&
       table.round !== "showdown" &&
@@ -342,23 +389,52 @@ Page({
       activePlayers.length <= 0 ||
       activePlayers.every((player) => (player.actedRound || 0) === roundId);
     const canAdvanceStage =
-      !autoStage && isHost && isStarted && table.round !== "showdown" && allEqual && allActed;
+      !isZhj && !autoStage && isHost && isStarted && table.round !== "showdown" && allEqual && allActed;
     const canSettle =
       isHost && isStarted && table.round === "showdown" && !table.settled && displayPot > 0;
     const canFold = canAct && activePlayers.length > 1;
     const canAllIn = canAct && (currentPlayer.stack || 0) > 0;
+    const minSeeRound = Number(table.gameRules?.minSeeRound || 0);
+    const compareAllowedAfter = Number(table.gameRules?.compareAllowedAfter || 0);
+    const compareTargets = isZhj
+      ? players.filter(
+          (player) =>
+            player.id !== currentPlayer.id &&
+            player.status !== "fold" &&
+            player.status !== "out"
+        )
+      : [];
+    const canSee = isZhj && canAct && !currentPlayer.seen && roundId >= minSeeRound;
+    const canCompare =
+      isZhj &&
+      canAct &&
+      currentPlayer.seen &&
+      roundId >= compareAllowedAfter &&
+      compareTargets.length > 0;
+    const rebuyLimit = isZhj
+      ? Number(table.gameRules?.rebuyLimit || table.gameRules?.buyIn || 0)
+      : Number(table.stack || 0);
+    const canRebuy = isStarted && table.settled && !!selfPlayer;
+    const showCompare = this.data.showCompare && canCompare;
+    const compareTargetId =
+      compareTargets.some((player) => player.id === this.data.compareTargetId)
+        ? this.data.compareTargetId
+        : "";
+    const compareResult = this.data.compareResult || "win";
+    const showRebuy = this.data.showRebuy && canRebuy;
     const showSettle = this.data.showSettle && table.round === "showdown" && !table.settled;
     const settlePots = showSettle
       ? buildSidePots(players, this.data.settlePots)
       : [];
     const turnKey = `${table.round || ""}-${roundId}-${turnIndex}`;
-    const stageLabel = formatRound(table.round);
+    const stageLabel = isZhj ? roomStatusLabel : formatRound(table.round);
     this.setData({
       table: { ...table, turnIndex },
       playersView,
       currentBet,
       currentPlayer: currentPlayer || { name: "", stack: 0, bet: 0 },
       callNeed,
+      displayCallNeed,
       roundLabel: roomStatusLabel,
       raiseTo,
       stageActionLabel: stageActionLabel(table.round),
@@ -377,6 +453,15 @@ Page({
       canSettle,
       canFold,
       canAllIn,
+      canSee,
+      canCompare,
+      showCompare,
+      compareTargets,
+      compareTargetId,
+      compareResult,
+      canRebuy,
+      showRebuy,
+      rebuyLimit,
       autoStage,
     });
     this.setupTurnCountdown(table, turnKey);
@@ -519,7 +604,8 @@ Page({
 
   onCheckCall() {
     if (!this.data.canAct) return;
-    const action = this.data.callNeed > 0 ? "call" : "check";
+    const isZhj = this.data.table?.gameType === "zhajinhua";
+    const action = isZhj ? "call" : this.data.callNeed > 0 ? "call" : "check";
     this.applyAction(action);
   },
 
@@ -527,15 +613,21 @@ Page({
     if (!this.data.canAct) return;
     const currentBet = Number(this.data.currentBet || 0);
     const raiseTo = Number(this.data.raiseTo || 0);
-    if (raiseTo < currentBet) {
-      wx.showToast({ title: "出积分不能低于当前最高积分", icon: "none" });
+    const isZhj = this.data.table?.gameType === "zhajinhua";
+    const baseBet = Number(this.data.table?.gameRules?.baseBet || 0);
+    const minRaise = isZhj ? currentBet + baseBet : currentBet;
+    if (raiseTo < minRaise) {
+      const title = isZhj ? "加注不能低于当前注 + 底注" : "出积分不能低于当前最高积分";
+      wx.showToast({ title, icon: "none" });
       return;
     }
     const currentPlayerBet = Number(this.data.currentPlayer?.bet || 0);
     const delta = Math.max(raiseTo - currentPlayerBet, 0);
+    const actualDelta = isZhj && this.data.currentPlayer?.seen ? delta * 2 : delta;
+    const deltaLabel = isZhj ? actualDelta : delta;
     wx.showModal({
-      title: "确认出积分",
-      content: `出积分到 ${raiseTo}（追加 ${delta}）？`,
+      title: isZhj ? "确认加注" : "确认出积分",
+      content: `${isZhj ? "加注到" : "出积分到"} ${raiseTo}（追加 ${deltaLabel}）？`,
       confirmText: "确认",
       success: (res) => {
         if (!res.confirm) return;
@@ -559,8 +651,45 @@ Page({
     });
   },
 
+  onSee() {
+    if (!this.data.canSee) return;
+    this.applyAction("see");
+  },
 
-  async applyAction(type) {
+  openCompare() {
+    if (!this.data.canCompare) return;
+    this.setData({ showCompare: true, compareTargetId: "", compareResult: "win" });
+  },
+
+  closeCompare() {
+    this.setData({ showCompare: false });
+  },
+
+  selectCompareTarget(e) {
+    const id = e.currentTarget.dataset.id;
+    if (!id) return;
+    this.setData({ compareTargetId: id });
+  },
+
+  selectCompareResult(e) {
+    const result = e.currentTarget.dataset.result;
+    if (!result) return;
+    this.setData({ compareResult: result });
+  },
+
+  confirmCompare() {
+    const targetId = this.data.compareTargetId;
+    const result = this.data.compareResult || "win";
+    if (!targetId) {
+      wx.showToast({ title: "请选择对手", icon: "none" });
+      return;
+    }
+    this.applyAction("compare", { targetId, result });
+    this.setData({ showCompare: false });
+  },
+
+
+  async applyAction(type, options = {}) {
     if (!this.roomId) return;
     if (!this.data.isStarted) {
       wx.showToast({ title: "房间未开始", icon: "none" });
@@ -571,9 +700,13 @@ Page({
       round: this.data.table?.round,
       settled: this.data.table?.settled,
     };
-    const raiseTo = Number(this.data.raiseTo || 0);
+    const raiseTo = Number.isFinite(Number(options.raiseTo))
+      ? Number(options.raiseTo)
+      : Number(this.data.raiseTo || 0);
+    const targetId = options.targetId || "";
+    const result = options.result || "";
     try {
-      await applyAction(this.roomId, type, raiseTo, expected);
+      await applyRoomAction(this.roomId, type, raiseTo, expected, targetId, result);
     } catch (err) {
       const code = getErrorCode(err);
       if (
@@ -615,7 +748,28 @@ Page({
         return;
       }
       if (code === "RAISE_TOO_LOW") {
-        wx.showToast({ title: "出积分不能低于当前最高积分", icon: "none" });
+        const isZhj = this.data.table?.gameType === "zhajinhua";
+        wx.showToast({ title: isZhj ? "加注不足" : "出积分不能低于当前最高积分", icon: "none" });
+        return;
+      }
+      if (code === "INVALID_RAISE") {
+        wx.showToast({ title: "加注无效", icon: "none" });
+        return;
+      }
+      if (code === "CANNOT_SEE") {
+        wx.showToast({ title: "未到可看牌轮数", icon: "none" });
+        return;
+      }
+      if (code === "CANNOT_COMPARE") {
+        wx.showToast({ title: "未到可比牌轮数", icon: "none" });
+        return;
+      }
+      if (code === "NO_TARGET") {
+        wx.showToast({ title: "请选择对手", icon: "none" });
+        return;
+      }
+      if (code === "INVALID_TARGET") {
+        wx.showToast({ title: "对手不可比", icon: "none" });
         return;
       }
       if (code === "ROUND_OVER") {
@@ -719,21 +873,56 @@ Page({
     this.advanceStage();
   },
 
-  async onAutoStageChange(e) {
+  openRebuy() {
+    if (!this.data.canRebuy) return;
+    const limit = Number(this.data.rebuyLimit || 0);
+    const base =
+      this.data.table?.gameType === "zhajinhua"
+        ? Number(this.data.table?.gameRules?.baseBet || 0)
+        : Number(this.data.table?.blinds?.bb || 0);
+    const defaultAmount = limit > 0 ? limit : base > 0 ? base : 0;
+    this.setData({ showRebuy: true, rebuyAmount: defaultAmount });
+  },
+
+  closeRebuy() {
+    this.setData({ showRebuy: false });
+  },
+
+  onRebuyInput(e) {
+    this.setData({ rebuyAmount: Number(e.detail.value || 0) });
+  },
+
+  async confirmRebuy() {
     if (!this.roomId) return;
-    if (!this.data.isHost) return;
-    const enabled = !!e.detail.value;
-    const prev = this.data.autoStage;
+    const amount = Number(this.data.rebuyAmount || 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      wx.showToast({ title: "补码金额无效", icon: "none" });
+      return;
+    }
+    const limit = Number(this.data.rebuyLimit || 0);
+    if (limit > 0 && amount > limit) {
+      wx.showToast({ title: "超过补码上限", icon: "none" });
+      return;
+    }
     try {
-      await setAutoStage(this.roomId, enabled);
+      await rebuy(this.roomId, amount);
+      wx.showToast({ title: "已补码", icon: "success" });
+      this.setData({ showRebuy: false });
     } catch (err) {
       const code = getErrorCode(err);
-      if (code === "NOT_HOST") {
-        wx.showToast({ title: "仅房主可修改", icon: "none" });
-      } else {
-        wx.showToast({ title: "更新失败", icon: "none" });
+      if (code === "NOT_SETTLED") {
+        wx.showToast({ title: "请先收积分", icon: "none" });
+        return;
       }
-      this.setData({ autoStage: prev });
+      if (code === "INVALID_REBUY") {
+        wx.showToast({ title: "补码金额无效", icon: "none" });
+        return;
+      }
+      if (code === "REBUY_TOO_LARGE") {
+        wx.showToast({ title: "超过补码上限", icon: "none" });
+        return;
+      }
+      wx.showToast({ title: "补码失败", icon: "none" });
     }
   },
 
