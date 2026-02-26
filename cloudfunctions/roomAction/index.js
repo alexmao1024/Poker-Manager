@@ -3,6 +3,7 @@ const { createMapAction } = require("./router");
 const { applyZhjAction, startZhjRound } = require("./domain/zhajinhua");
 const { settlePot } = require("./domain/settlement");
 const { validateRebuy } = require("./domain/rebuy");
+const { normalizeChipAdjustInput, applyChipAdjustToPlayers } = require("./domain/chipAdjust");
 const { normalizeGameRules } = require("./domain/gameRules");
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
@@ -774,64 +775,6 @@ async function setActionTimeout(id, actionTimeoutSec, openId) {
   return { ok: true };
 }
 
-async function addMockPlayers(id, count, openId) {
-  if (!openId) {
-    throw new Error("NO_OPENID");
-  }
-  const now = Date.now();
-  const requested = Number(count);
-  const batchSize = Number.isFinite(requested)
-    ? Math.max(1, Math.min(5, Math.floor(requested)))
-    : 3;
-  let addedCount = 0;
-
-  await db.runTransaction(async (tx) => {
-    const doc = await tx.collection(ROOMS).doc(id).get();
-    const table = doc.data;
-    if (!table) {
-      throw new Error("NOT_FOUND");
-    }
-    if (table.status !== "lobby") {
-      throw new Error("ROOM_STARTED");
-    }
-    if (table.hostOpenId && table.hostOpenId !== openId) {
-      throw new Error("NOT_HOST");
-    }
-
-    const players = (table.players || []).map((player) => ({ ...player }));
-    const maxSeats = Number(table.maxSeats || 0);
-    const seatsLeft = maxSeats > 0 ? Math.max(0, maxSeats - players.length) : 0;
-    if (seatsLeft <= 0) {
-      throw new Error("ROOM_FULL");
-    }
-    const stackRaw = Number(table.stack);
-    const stack = Number.isFinite(stackRaw) && stackRaw > 0 ? stackRaw : defaultConfig.stack;
-    addedCount = Math.min(batchSize, seatsLeft);
-
-    const nameSet = new Set(players.map((player) => String(player.name || "")));
-    let serial = 1;
-    while (addedCount > 0) {
-      const mockName = `模拟${serial}`;
-      serial += 1;
-      if (nameSet.has(mockName)) continue;
-      nameSet.add(mockName);
-      players.push(buildPlayer(mockName, "", openId, stack, "active"));
-      addedCount -= 1;
-    }
-
-    const realAdded = players.length - (table.players || []).length;
-    await tx.collection(ROOMS).doc(id).update({
-      data: {
-        players,
-        updatedAt: now,
-      },
-    });
-    addedCount = realAdded;
-  });
-
-  return { ok: true, addedCount };
-}
-
 async function startRoom(id, openId) {
   if (!openId) {
     throw new Error("NO_OPENID");
@@ -1228,6 +1171,143 @@ async function rebuy(id, amount, openId) {
   return { ok: true };
 }
 
+async function adjustChips(id, payload, openId) {
+  if (!openId) {
+    throw new Error("NO_OPENID");
+  }
+  if (!id) {
+    throw new Error("NOT_FOUND");
+  }
+  const now = Date.now();
+  await db.runTransaction(async (tx) => {
+    const doc = await tx.collection(ROOMS).doc(id).get();
+    const table = doc.data;
+    if (!table) {
+      throw new Error("NOT_FOUND");
+    }
+    assertStarted(table);
+    if (table.hostOpenId && table.hostOpenId !== openId) {
+      throw new Error("NOT_HOST");
+    }
+    const { delta, note } = normalizeChipAdjustInput(payload);
+    const players = applyChipAdjustToPlayers(table.players || [], payload?.targetId, delta);
+    const targetPlayer = players.find((player) => player.id === payload?.targetId);
+    const log = [...(table.log || [])];
+    log.push({
+      ts: now,
+      action: "hostAdjustChips",
+      hostOpenId: openId,
+      targetId: payload?.targetId || null,
+      targetName: targetPlayer?.name || "",
+      delta,
+      note: note || null,
+    });
+    await tx.collection(ROOMS).doc(id).update({
+      data: {
+        players,
+        log,
+        updatedAt: now,
+      },
+    });
+  });
+  return { ok: true };
+}
+
+async function setNextAnteSponsor(id, sponsorId, openId) {
+  if (!openId) {
+    throw new Error("NO_OPENID");
+  }
+  if (!id) {
+    throw new Error("NOT_FOUND");
+  }
+  const now = Date.now();
+  await db.runTransaction(async (tx) => {
+    const doc = await tx.collection(ROOMS).doc(id).get();
+    const table = doc.data;
+    if (!table) {
+      throw new Error("NOT_FOUND");
+    }
+    assertStarted(table);
+    if (table.gameType !== "zhajinhua") {
+      throw new Error("ONLY_ZHJ");
+    }
+    if (table.round !== "showdown" || !table.settled) {
+      throw new Error("NOT_SETTLED");
+    }
+    if (table.hostOpenId && table.hostOpenId !== openId) {
+      throw new Error("NOT_HOST");
+    }
+    const players = (table.players || []).map((player) => ({ ...player }));
+    const nextSponsorId = typeof sponsorId === "string" ? sponsorId : "";
+    if (nextSponsorId) {
+      const exists = players.some((player) => player.id === nextSponsorId && !player.left);
+      if (!exists) {
+        throw new Error("INVALID_TARGET");
+      }
+    }
+    const log = [...(table.log || [])];
+    log.push({
+      ts: now,
+      action: "setNextAnteSponsor",
+      hostOpenId: openId,
+      sponsorId: nextSponsorId || null,
+    });
+    await tx.collection(ROOMS).doc(id).update({
+      data: {
+        zjhNextAnteSponsorId: nextSponsorId || null,
+        log,
+        updatedAt: now,
+      },
+    });
+  });
+  return { ok: true };
+}
+
+async function setZhjCompareRules(id, payload, openId) {
+  if (!openId) {
+    throw new Error("NO_OPENID");
+  }
+  if (!id) {
+    throw new Error("NOT_FOUND");
+  }
+  const now = Date.now();
+  await db.runTransaction(async (tx) => {
+    const doc = await tx.collection(ROOMS).doc(id).get();
+    const table = doc.data;
+    if (!table) {
+      throw new Error("NOT_FOUND");
+    }
+    if (table.gameType !== "zhajinhua") {
+      throw new Error("ONLY_ZHJ");
+    }
+    if (table.status !== "lobby" && table.status !== "active") {
+      throw new Error("INVALID_STATUS");
+    }
+    if (table.hostOpenId && table.hostOpenId !== openId) {
+      throw new Error("NOT_HOST");
+    }
+    const banCompareWhenDark = !!payload?.banCompareWhenDark;
+    const allowHeadsUpMixedCompare = true;
+    const log = [...(table.log || [])];
+    log.push({
+      ts: now,
+      action: "setZhjCompareRules",
+      hostOpenId: openId,
+      banCompareWhenDark,
+      allowHeadsUpMixedCompare,
+    });
+    await tx.collection(ROOMS).doc(id).update({
+      data: {
+        zjhBanCompareWhenDark: banCompareWhenDark,
+        zjhAllowHeadsUpMixedCompare: allowHeadsUpMixedCompare,
+        log,
+        updatedAt: now,
+      },
+    });
+  });
+  return { ok: true };
+}
+
 async function finishRoom(id, openId) {
   if (!id) {
     throw new Error("NOT_FOUND");
@@ -1252,12 +1332,14 @@ const mapAction = createMapAction({
   reorderPlayers,
   setAutoStage,
   setActionTimeout,
-  addMockPlayers,
   startRoom,
   updateProfile,
   endRoomRound,
   resetRoomRound,
   rebuy,
+  adjustChips,
+  setNextAnteSponsor,
+  setZhjCompareRules,
   finishRoom,
 });
 

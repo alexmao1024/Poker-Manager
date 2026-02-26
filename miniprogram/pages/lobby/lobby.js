@@ -6,8 +6,8 @@ const {
   leaveRoom,
   reorderPlayers,
   startRoom,
-  addMockPlayers,
   finishRoom,
+  setZhjCompareRules: setZhjCompareRulesAction,
 } = require("../../utils/roomService");
 const { getOpenId } = require("../../utils/cloud");
 const {
@@ -68,6 +68,8 @@ Page({
     reorderAreaHeight: 0,
     reorderItemHeight: 88,
     reorderPadding: 12,
+    showZhjCompareRules: false,
+    zjhBanCompareWhenDark: false,
     showHostGuide: false,
   },
 
@@ -260,6 +262,8 @@ Page({
     });
     const isHost = !!room.hostOpenId && room.hostOpenId === this.data.openId;
     const canStart = isHost && playersView.length >= 2;
+    const canSetZhjCompareRules = isHost && room.gameType === "zhajinhua" && room.status === "lobby";
+    const showZhjCompareRules = this.data.showZhjCompareRules && canSetZhjCompareRules;
 
     const itemHeight = this.data.reorderItemHeight || 88;
     const padding = this.data.reorderPadding || 0;
@@ -278,6 +282,8 @@ Page({
       canStart,
       reorderList,
       reorderAreaHeight: reorderList.length * itemHeight + padding * 2,
+      showZhjCompareRules,
+      zjhBanCompareWhenDark: !!room.zjhBanCompareWhenDark,
     });
     this.loadAvatarUrls(pendingAvatarIds);
     this.maybeShowHostGuide(isHost);
@@ -468,6 +474,42 @@ Page({
     this.setData({ showHostGuide: false });
   },
 
+  openZhjCompareRules() {
+    if (!this.data.isHost) return;
+    if (this.data.room?.gameType !== "zhajinhua") return;
+    this.setData({ showZhjCompareRules: true });
+  },
+
+  closeZhjCompareRules() {
+    this.setData({ showZhjCompareRules: false });
+  },
+
+  toggleZhjBanCompareWhenDark() {
+    this.setData({ zjhBanCompareWhenDark: !this.data.zjhBanCompareWhenDark });
+  },
+
+  async confirmZhjCompareRules() {
+    if (!this.roomId) return;
+    if (!this.data.isHost) return;
+    if (this.data.room?.gameType !== "zhajinhua") return;
+    try {
+      await setZhjCompareRulesAction(this.roomId, !!this.data.zjhBanCompareWhenDark);
+      wx.showToast({ title: "规则已更新", icon: "success" });
+      this.setData({ showZhjCompareRules: false });
+    } catch (err) {
+      const code = this.getErrorCode(err);
+      if (code === "NOT_HOST") {
+        wx.showToast({ title: "仅房主可设置", icon: "none" });
+        return;
+      }
+      if (code === "ONLY_ZHJ") {
+        wx.showToast({ title: "仅炸金花支持", icon: "none" });
+        return;
+      }
+      wx.showToast({ title: "设置失败", icon: "none" });
+    }
+  },
+
   async saveReorder() {
     if (!this.roomId) return;
     const order = (this.data.reorderList || []).map((item) => item.id);
@@ -513,42 +555,6 @@ Page({
         return;
       }
       wx.showToast({ title: "开始失败", icon: "none" });
-    }
-  },
-
-  async addMockPlayersForTest() {
-    if (!this.roomId) return;
-    if (!this.data.isHost) {
-      wx.showToast({ title: "仅房主可添加", icon: "none" });
-      return;
-    }
-    const maxSeats = Number(this.data.room?.maxSeats || 0);
-    const currentSeats = (this.data.playersView || []).length;
-    const seatsLeft = maxSeats > 0 ? Math.max(0, maxSeats - currentSeats) : 0;
-    if (seatsLeft <= 0) {
-      wx.showToast({ title: "座位已满", icon: "none" });
-      return;
-    }
-    const requestCount = Math.min(3, seatsLeft);
-    try {
-      const res = await addMockPlayers(this.roomId, requestCount);
-      const added = Number(res?.addedCount || requestCount);
-      wx.showToast({ title: `已添加${added}个模拟人`, icon: "none" });
-    } catch (err) {
-      const code = this.getErrorCode(err);
-      if (code === "NOT_HOST") {
-        wx.showToast({ title: "仅房主可添加", icon: "none" });
-        return;
-      }
-      if (code === "ROOM_STARTED") {
-        wx.showToast({ title: "已开局，无法添加", icon: "none" });
-        return;
-      }
-      if (code === "ROOM_FULL") {
-        wx.showToast({ title: "座位已满", icon: "none" });
-        return;
-      }
-      wx.showToast({ title: "添加失败", icon: "none" });
     }
   },
 

@@ -99,16 +99,18 @@
     <view class="panel control fade-in delay-2">
       <view class="lobby-control">
         <button
-          wx:if="{{isHost}}"
+          wx:if="{{isHost && room.gameType === 'zhajinhua'}}"
           class="btn btn-ghost"
-          bindtap="addMockPlayersForTest"
-          disabled="{{playersView.length >= (room.maxSeats || playersView.length)}}"
+          bindtap="openZhjCompareRules"
         >
-          添加模拟人（+3）
+          比牌限制
         </button>
         <button class="btn btn-primary" bindtap="startRoom" disabled="{{!canStart}}">开始房间</button>
         <button wx:if="{{isHost}}" class="btn btn-ghost" bindtap="endRoom">结束房间</button>
         <button wx:else class="btn btn-ghost" bindtap="leaveRoom">退出房间</button>
+      </view>
+      <view wx:if="{{room.gameType === 'zhajinhua'}}" class="lobby-hint">
+        比牌限制：{{zjhBanCompareWhenDark ? "有闷牌禁比（仅剩两人一明一闷可比）" : "按默认规则"}}
       </view>
       <view class="lobby-hint">开局后不可加入</view>
     </view>
@@ -121,20 +123,44 @@
         <view wx:if="{{room.gameType !== 'zhajinhua'}}">
           <view class="guide-item"><text class="guide-index">1.</text><text>大厅拖拽座位顺序，确认庄位。</text></view>
           <view class="guide-item"><text class="guide-index">2.</text><text>点击“开始房间”，系统自动扣盲。</text></view>
-          <view class="guide-item"><text class="guide-index">3.</text><text>行动按顺序进行，轮到谁谁操作。</text></view>
+          <view class="guide-item"><text class="guide-index">3.</text><text>行动按顺序进行，轮到谁谁操作；房主可用“积分修正”处理喜钱/纠错。</text></view>
           <view class="guide-item"><text class="guide-index">4.</text><text>摊牌后点击“收积分”，选择赢家（可多人平分）。</text></view>
-          <view class="guide-item"><text class="guide-index">5.</text><text>收完积分后自动进入新一回合，需要结束就点“结束房间”。</text></view>
+          <view class="guide-item"><text class="guide-index">5.</text><text>收完积分后大家可补码，房主点“新一回合”；需要结束就点“结束房间”。</text></view>
         </view>
         <view wx:else>
           <view class="guide-item"><text class="guide-index">1.</text><text>大厅拖拽座位顺序，确认庄位。</text></view>
-          <view class="guide-item"><text class="guide-index">2.</text><text>点击“开始房间”，系统自动收底注。</text></view>
-          <view class="guide-item"><text class="guide-index">3.</text><text>轮到谁谁行动：闷跟/看牌/加注/比牌。</text></view>
-          <view class="guide-item"><text class="guide-index">4.</text><text>封顶轮数或只剩一人进入开牌。</text></view>
-          <view class="guide-item"><text class="guide-index">5.</text><text>开牌后点击“收积分”，选择赢家。</text></view>
+          <view class="guide-item"><text class="guide-index">2.</text><text>“比牌限制（开局前）”可预设规则；点击“开始房间”后系统自动收底注。</text></view>
+          <view class="guide-item"><text class="guide-index">3.</text><text>轮到谁谁行动：闷跟/看牌/加注/比牌；房主可用“积分修正”处理喜钱/纠错。</text></view>
+          <view class="guide-item"><text class="guide-index">4.</text><text>封顶轮数或只剩一人进入开牌；牌局中房主也可继续调“比牌限制”。</text></view>
+          <view class="guide-item"><text class="guide-index">5.</text><text>开牌后点击“收积分”，结算后可补码；房主可设置“下手代下底”再点“新一回合”。</text></view>
         </view>
       </view>
       <view class="modal-actions">
         <button class="btn btn-primary" bindtap="closeHostGuide">知道了</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{showZhjCompareRules}}" class="rules-modal" bindtap="closeZhjCompareRules">
+    <view class="settle-card" catchtap="noop">
+      <view class="modal-title">比牌限制（炸金花）</view>
+      <view class="settle-hint">大厅预设：开局后同样生效。你也可以在牌局进行中继续调整。</view>
+      <view class="form-row">
+        <text class="form-label">有闷牌时禁止比牌</text>
+      </view>
+      <view class="compare-result">
+        <view
+          class="settle-chip {{zjhBanCompareWhenDark ? 'is-selected' : ''}}"
+          bindtap="toggleZhjBanCompareWhenDark"
+        >
+          {{zjhBanCompareWhenDark ? "已开启" : "已关闭"}}
+        </view>
+      </view>
+      <view class="raise-note">
+        说明：开启后，场上只要还有闷牌玩家就不能比牌；但仅剩两人且一明一闷时允许比牌。
+      </view>
+      <view class="modal-actions">
+        <button class="btn btn-primary" bindtap="confirmZhjCompareRules">确认</button>
       </view>
     </view>
   </view>

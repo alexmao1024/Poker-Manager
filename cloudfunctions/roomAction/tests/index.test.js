@@ -9,17 +9,20 @@ const actions = [
   "reorderPlayers",
   "setAutoStage",
   "setActionTimeout",
-  "addMockPlayers",
   "startRoom",
   "updateProfile",
   "endRound",
   "resetRound",
   "finishRoom",
   "rebuy",
+  "adjustChips",
+  "setNextAnteSponsor",
+  "setZhjCompareRules",
 ];
 
 actions.forEach((action) => {
   assert.equal(typeof mapAction(action), "function");
 });
+
 
 assert.equal(mapAction("unknown"), null);

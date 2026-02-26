@@ -177,10 +177,32 @@
           {{stageActionLabel}}
         </button>
         <button class="btn btn-ghost" bindtap="resetHand" disabled="{{!canStartNextRound}}">新一回合</button>
+        <button
+          wx:if="{{isHost && table.gameType === 'zhajinhua' && table.round !== 'showdown'}}"
+          class="btn btn-ghost"
+          bindtap="openZhjCompareRules"
+        >
+          比牌限制
+        </button>
+        <button
+          wx:if="{{isHost && table.gameType === 'zhajinhua' && canStartNextRound}}"
+          class="btn btn-ghost"
+          bindtap="openNextAnteSponsor"
+        >
+          下手代下底
+        </button>
+        <button wx:if="{{isHost && isStarted}}" class="btn btn-ghost" bindtap="openAdjustChips">积分修正</button>
         <button wx:if="{{canRebuy}}" class="btn btn-ghost" bindtap="openRebuy">补码</button>
         <button class="btn btn-ghost" open-type="share">分享房间</button>
         <button wx:if="{{isHost}}" class="btn btn-primary" bindtap="goSummary">结束房间</button>
         <button wx:else class="btn btn-primary" bindtap="leaveRoom">退出房间</button>
+      </view>
+      <view wx:if="{{table.gameType === 'zhajinhua' && zjhNextAnteSponsorName}}" class="raise-note">
+        下一手代下底：{{zjhNextAnteSponsorName}}
+      </view>
+      <view wx:if="{{table.gameType === 'zhajinhua' && isStarted && table.round !== 'showdown'}}" class="raise-note">
+        比牌限制：{{zjhBanCompareWhenDark ? "有闷牌禁比" : "按默认规则"}}
+        {{zjhBanCompareWhenDark ? "（仅剩两人一明一闷可比）" : ""}}
       </view>
     </view>
   </view>
@@ -210,17 +232,17 @@
       <view class="guide-list">
         <view wx:if="{{table.gameType !== 'zhajinhua'}}">
           <view class="guide-item"><text class="guide-index">1.</text><text>确认座位顺序，庄/盲位显示在左上。</text></view>
-          <view class="guide-item"><text class="guide-index">2.</text><text>开局后系统自动扣盲，按顺序行动。</text></view>
-          <view class="guide-item"><text class="guide-index">3.</text><text>进入摊牌后点击“收积分”，选择赢家。</text></view>
-          <view class="guide-item"><text class="guide-index">4.</text><text>收完积分后自动进入新一回合。</text></view>
-          <view class="guide-item"><text class="guide-index">5.</text><text>结束对局时点击“结束房间”。</text></view>
+          <view class="guide-item"><text class="guide-index">2.</text><text>开局后系统自动扣盲，按顺序行动；快捷区是“本次出多少积分”，自定义是“到多少注”。</text></view>
+          <view class="guide-item"><text class="guide-index">3.</text><text>进入摊牌后点“收积分”，按主池/侧池选择赢家（可多人平分）。</text></view>
+          <view class="guide-item"><text class="guide-index">4.</text><text>收完积分后大家可点“补码”；房主可用“积分修正”处理喜钱/纠错。</text></view>
+          <view class="guide-item"><text class="guide-index">5.</text><text>准备好后房主点“新一回合”，结束整局点“结束房间”。</text></view>
         </view>
         <view wx:else>
           <view class="guide-item"><text class="guide-index">1.</text><text>确认座位顺序，庄位显示在左上。</text></view>
-          <view class="guide-item"><text class="guide-index">2.</text><text>开局后系统自动收底注，庄家先行动。</text></view>
-          <view class="guide-item"><text class="guide-index">3.</text><text>封顶轮数或只剩一人进入开牌。</text></view>
-          <view class="guide-item"><text class="guide-index">4.</text><text>开牌后点击“收积分”，选择赢家。</text></view>
-          <view class="guide-item"><text class="guide-index">5.</text><text>收完积分后进入新一回合。</text></view>
+          <view class="guide-item"><text class="guide-index">2.</text><text>开局后系统自动收底注，庄家先行动；房主可用“比牌限制”调整本手比牌规则。</text></view>
+          <view class="guide-item"><text class="guide-index">3.</text><text>封顶轮数或只剩一人进入开牌；房主可用“积分修正”处理喜钱/纠错。</text></view>
+          <view class="guide-item"><text class="guide-index">4.</text><text>开牌后点击“收积分”，按主池/侧池选择赢家。</text></view>
+          <view class="guide-item"><text class="guide-index">5.</text><text>收完积分后可补码；房主可设“下手代下底”，再点“新一回合”。</text></view>
         </view>
       </view>
       <view class="modal-actions">
@@ -333,6 +355,107 @@
       <view class="modal-actions">
         <button class="btn btn-ghost" bindtap="closeRebuy">取消</button>
         <button class="btn btn-primary" bindtap="confirmRebuy">确认</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{showAdjustChips}}" class="rules-modal" bindtap="closeAdjustChips">
+    <view class="settle-card" catchtap="noop">
+      <view class="modal-title">积分修正（房主）</view>
+      <view class="settle-hint">用于喜钱、口头约定和临时纠错。正数加分，负数改为“扣分”模式。</view>
+      <view class="form-row">
+        <text class="form-label">选择玩家</text>
+      </view>
+      <view class="settle-eligible">
+        <view
+          wx:for="{{hostAdjustTargets}}"
+          wx:key="id"
+          class="settle-chip {{adjustChipTargetId === item.id ? 'is-selected' : ''}}"
+          data-id="{{item.id}}"
+          bindtap="selectAdjustChipTarget"
+        >
+          {{item.name}}（{{item.stack}}）
+        </view>
+      </view>
+      <view class="form-row">
+        <text class="form-label">修正方向</text>
+      </view>
+      <view class="compare-result">
+        <view
+          class="settle-chip {{adjustChipMode === 'add' ? 'is-selected' : ''}}"
+          data-mode="add"
+          bindtap="selectAdjustChipMode"
+        >
+          加分
+        </view>
+        <view
+          class="settle-chip {{adjustChipMode === 'sub' ? 'is-selected' : ''}}"
+          data-mode="sub"
+          bindtap="selectAdjustChipMode"
+        >
+          扣分
+        </view>
+      </view>
+      <view class="form-row">
+        <text class="form-label">修正数值</text>
+        <input class="form-input" type="number" value="{{adjustChipAmount}}" bindinput="onAdjustChipAmountInput" />
+      </view>
+      <view class="modal-actions">
+        <button class="btn btn-ghost" bindtap="closeAdjustChips">取消</button>
+        <button class="btn btn-primary" bindtap="confirmAdjustChips">确认修正</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{showZhjCompareRules}}" class="rules-modal" bindtap="closeZhjCompareRules">
+    <view class="settle-card" catchtap="noop">
+      <view class="modal-title">比牌限制（炸金花）</view>
+      <view class="settle-hint">房主可按本手玩法限制比牌。新一手开局后会恢复默认规则。</view>
+      <view class="form-row">
+        <text class="form-label">有闷牌时禁止比牌</text>
+      </view>
+      <view class="compare-result">
+        <view
+          class="settle-chip {{zjhBanCompareWhenDark ? 'is-selected' : ''}}"
+          bindtap="toggleZhjBanCompareWhenDark"
+        >
+          {{zjhBanCompareWhenDark ? "已开启" : "已关闭"}}
+        </view>
+      </view>
+      <view class="raise-note">
+        说明：开启后，场上只要还有闷牌玩家就不能比牌；但仅剩两人且一明一闷时允许比牌。
+      </view>
+      <view class="modal-actions">
+        <button class="btn btn-primary" bindtap="confirmZhjCompareRules">确认</button>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{showNextAnteSponsor}}" class="rules-modal" bindtap="closeNextAnteSponsor">
+    <view class="settle-card" catchtap="noop">
+      <view class="modal-title">下一手代下底（炸金花）</view>
+      <view class="settle-hint">选中后，下一手开局将由该玩家代缴全场底注。可清除设置。</view>
+      <view class="settle-eligible">
+        <view
+          class="settle-chip {{!nextAnteSponsorTargetId ? 'is-selected' : ''}}"
+          data-id=""
+          bindtap="selectNextAnteSponsorTarget"
+        >
+          不设置
+        </view>
+        <view
+          wx:for="{{nextAnteSponsorTargets}}"
+          wx:key="id"
+          class="settle-chip {{nextAnteSponsorTargetId === item.id ? 'is-selected' : ''}}"
+          data-id="{{item.id}}"
+          bindtap="selectNextAnteSponsorTarget"
+        >
+          {{item.name}}（{{item.stack}}）
+        </view>
+      </view>
+      <view class="modal-actions">
+        <button class="btn btn-ghost" bindtap="closeNextAnteSponsor">取消</button>
+        <button class="btn btn-primary" bindtap="confirmNextAnteSponsor">确认</button>
       </view>
     </view>
   </view>

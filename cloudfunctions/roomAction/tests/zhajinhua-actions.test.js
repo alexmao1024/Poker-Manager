@@ -86,3 +86,106 @@ const callResult = applyZhjAction({
 
 assert.equal(callResult.players[0].stack, 90);
 assert.equal(callResult.players[0].bet, 10);
+
+const compareBlockedTable = {
+  ...baseTable,
+  turnIndex: 0,
+  zjhRoundCount: 3,
+  gameRules: {
+    ...baseTable.gameRules,
+    compareAllowedAfter: 3,
+  },
+  zjhBanCompareWhenDark: true,
+  zjhAllowHeadsUpMixedCompare: true,
+  players: [
+    {
+      id: "p1",
+      openId: "o1",
+      stack: 100,
+      bet: 10,
+      handBet: 10,
+      actedRound: 0,
+      status: "active",
+      seen: true,
+    },
+    {
+      id: "p2",
+      openId: "o2",
+      stack: 100,
+      bet: 10,
+      handBet: 10,
+      actedRound: 0,
+      status: "active",
+      seen: true,
+    },
+    {
+      id: "p3",
+      openId: "o3",
+      stack: 100,
+      bet: 10,
+      handBet: 10,
+      actedRound: 0,
+      status: "active",
+      seen: false,
+    },
+  ],
+};
+
+assert.throws(
+  () =>
+    applyZhjAction({
+      table: compareBlockedTable,
+      type: "compare",
+      targetId: "p2",
+      result: "win",
+      expected: { turnIndex: 0, round: "betting", settled: false },
+      openId: "o1",
+      now: 0,
+    }),
+  /CANNOT_COMPARE_DARK/
+);
+
+const headsUpMixedAllowedTable = {
+  ...baseTable,
+  zjhRoundCount: 3,
+  gameRules: {
+    ...baseTable.gameRules,
+    compareAllowedAfter: 3,
+  },
+  zjhBanCompareWhenDark: true,
+  zjhAllowHeadsUpMixedCompare: false,
+  players: [
+    {
+      id: "p1",
+      openId: "o1",
+      stack: 100,
+      bet: 10,
+      handBet: 10,
+      actedRound: 0,
+      status: "active",
+      seen: true,
+    },
+    {
+      id: "p2",
+      openId: "o2",
+      stack: 100,
+      bet: 10,
+      handBet: 10,
+      actedRound: 0,
+      status: "active",
+      seen: false,
+    },
+  ],
+};
+
+const headsUpCompareResult = applyZhjAction({
+  table: headsUpMixedAllowedTable,
+  type: "compare",
+  targetId: "p2",
+  result: "win",
+  expected: { turnIndex: 0, round: "betting", settled: false },
+  openId: "o1",
+  now: 0,
+});
+
+assert.equal(headsUpCompareResult.players[1].status, "fold");

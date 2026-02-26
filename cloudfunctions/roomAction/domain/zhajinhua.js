@@ -153,6 +153,20 @@ function applyZhjAction({ table, type, raiseTo, targetId, result, expected, open
     if (!canCompare(rules, roundCount, seen)) {
       throw new Error("CANNOT_COMPARE");
     }
+    const inHandPlayers = players.filter(
+      (item) => item.status !== "fold" && item.status !== "out"
+    );
+    const hasDarkPlayer = inHandPlayers.some((item) => !item.seen);
+    const banCompareWhenDark = !!table.zjhBanCompareWhenDark;
+    if (banCompareWhenDark && hasDarkPlayer) {
+      const headsUpMixed =
+        inHandPlayers.length === 2 &&
+        inHandPlayers.some((item) => !!item.seen) &&
+        inHandPlayers.some((item) => !item.seen);
+      if (!headsUpMixed) {
+        throw new Error("CANNOT_COMPARE_DARK");
+      }
+    }
     if (!targetId) {
       throw new Error("NO_TARGET");
     }
@@ -272,15 +286,35 @@ function startZhjRound({ table, now, dealerIndex }) {
     }
   });
 
-  players.forEach((player) => {
-    if (player.status !== "active") return;
-    const pay = Math.min(baseBet, player.stack);
-    player.stack -= pay;
-    player.handBet += pay;
-    if (player.stack === 0) {
-      player.status = "allin";
+  const sponsorId =
+    typeof table.zjhNextAnteSponsorId === "string" ? table.zjhNextAnteSponsorId : "";
+  const activePlayers = players.filter((player) => player.status === "active");
+  const sponsorIndex =
+    sponsorId && activePlayers.length
+      ? players.findIndex((player) => player.id === sponsorId && player.status === "active")
+      : -1;
+
+  if (sponsorIndex >= 0 && activePlayers.length > 0) {
+    const sponsor = { ...players[sponsorIndex] };
+    const totalAnte = Math.max(0, baseBet) * activePlayers.length;
+    const pay = Math.min(totalAnte, sponsor.stack);
+    sponsor.stack -= pay;
+    sponsor.handBet += pay;
+    if (sponsor.stack === 0) {
+      sponsor.status = "allin";
     }
-  });
+    players[sponsorIndex] = sponsor;
+  } else {
+    players.forEach((player) => {
+      if (player.status !== "active") return;
+      const pay = Math.min(baseBet, player.stack);
+      player.stack -= pay;
+      player.handBet += pay;
+      if (player.stack === 0) {
+        player.status = "allin";
+      }
+    });
+  }
 
   const pot = players.reduce((sum, player) => sum + (player.handBet || 0), 0);
   const zjhRoundCount = 1;
@@ -303,6 +337,9 @@ function startZhjRound({ table, now, dealerIndex }) {
     pot,
     turnExpiresAt,
     settled: false,
+    zjhNextAnteSponsorId: null,
+    zjhBanCompareWhenDark: false,
+    zjhAllowHeadsUpMixedCompare: true,
     log: [],
   };
 }

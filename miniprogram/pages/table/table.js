@@ -7,6 +7,9 @@ const {
   resetRound,
   leaveRoom,
   rebuy,
+  adjustChips,
+  setNextAnteSponsor,
+  setZhjCompareRules,
 } = require("../../utils/roomService");
 const { getOpenId } = require("../../utils/cloud");
 const { formatRound } = require("../../utils/format");
@@ -213,6 +216,17 @@ Page({
     showRebuy: false,
     rebuyAmount: 0,
     rebuyLimit: 0,
+    hostAdjustTargets: [],
+    showAdjustChips: false,
+    adjustChipTargetId: "",
+    adjustChipMode: "add",
+    adjustChipAmount: 0,
+    showNextAnteSponsor: false,
+    nextAnteSponsorTargets: [],
+    nextAnteSponsorTargetId: "",
+    zjhNextAnteSponsorName: "",
+    showZhjCompareRules: false,
+    zjhBanCompareWhenDark: false,
     waitActionText: "",
     texasRulesImageSrc: TEXAS_RULES_IMAGE_FILE_ID || "/assets/hand-ranks.png",
     zhjRulesImageSrc: ZHJ_RULES_IMAGE_FILE_ID || "/assets/zjh-hand-ranks.png",
@@ -478,17 +492,67 @@ Page({
             player.status !== "out"
         )
       : [];
+    const inHandPlayers = isZhj
+      ? players.filter((player) => player.status !== "fold" && player.status !== "out")
+      : [];
+    const hasDarkInHand = isZhj && inHandPlayers.some((player) => !player.seen);
+    const zjhBanCompareWhenDark = !!table.zjhBanCompareWhenDark;
+    const headsUpMixedCompareAllowed =
+      isZhj &&
+      inHandPlayers.length === 2 &&
+      inHandPlayers.some((player) => !!player.seen) &&
+      inHandPlayers.some((player) => !player.seen);
+    const compareBlockedByDarkRule =
+      isZhj &&
+      zjhBanCompareWhenDark &&
+      hasDarkInHand &&
+      !headsUpMixedCompareAllowed;
     const canSee = isZhj && canAct && !currentPlayer.seen && roundId >= minSeeRound;
     const canCompare =
       isZhj &&
       canAct &&
       currentPlayer.seen &&
       roundId >= compareAllowedAfter &&
-      compareTargets.length > 0;
+      compareTargets.length > 0 &&
+      !compareBlockedByDarkRule;
     const rebuyLimit = isZhj
       ? Number(table.gameRules?.rebuyLimit || table.gameRules?.buyIn || 0)
       : Number(table.stack || 0);
     const canRebuy = isStarted && table.settled && !!selfPlayer;
+    const nextAnteSponsorTargets = isZhj
+      ? players
+          .filter((player) => !player.left)
+          .map((player) => ({
+            id: player.id,
+            name: player.name || "玩家",
+            stack: Number(player.stack || 0),
+            status: player.status || "active",
+          }))
+      : [];
+    const zjhNextAnteSponsorName =
+      isZhj && table.zjhNextAnteSponsorId
+        ? nextAnteSponsorTargets.find((item) => item.id === table.zjhNextAnteSponsorId)?.name || ""
+        : "";
+    const nextAnteSponsorTargetId = nextAnteSponsorTargets.some(
+      (item) => item.id === this.data.nextAnteSponsorTargetId
+    )
+      ? this.data.nextAnteSponsorTargetId
+      : table.zjhNextAnteSponsorId || "";
+    const canSetNextAnteSponsor = isZhj && isHost && isStarted && table.round === "showdown" && table.settled;
+    const showNextAnteSponsor = this.data.showNextAnteSponsor && canSetNextAnteSponsor;
+    const canSetZhjCompareRules =
+      isZhj && isHost && isStarted && table.round !== "showdown";
+    const showZhjCompareRules = this.data.showZhjCompareRules && canSetZhjCompareRules;
+    const hostAdjustTargets = players.map((player) => ({
+      id: player.id,
+      name: player.name || "玩家",
+      stack: Number(player.stack || 0),
+      status: player.status || "active",
+    }));
+    const adjustChipTargetId = hostAdjustTargets.some((item) => item.id === this.data.adjustChipTargetId)
+      ? this.data.adjustChipTargetId
+      : hostAdjustTargets[0]?.id || "";
+    const showAdjustChips = this.data.showAdjustChips && isHost && isStarted;
     let waitActionText = "等待轮到你";
     if (table.round === "showdown") {
       if (table.settled) {
@@ -553,6 +617,15 @@ Page({
       canRebuy,
       showRebuy,
       rebuyLimit,
+      hostAdjustTargets,
+      showAdjustChips,
+      adjustChipTargetId,
+      nextAnteSponsorTargets,
+      showNextAnteSponsor,
+      nextAnteSponsorTargetId,
+      zjhNextAnteSponsorName,
+      showZhjCompareRules,
+      zjhBanCompareWhenDark,
       waitActionText,
       autoStage,
     });
@@ -830,6 +903,10 @@ Page({
         wx.showToast({ title: "未到可比牌轮数", icon: "none" });
         return;
       }
+      if (code === "CANNOT_COMPARE_DARK") {
+        wx.showToast({ title: "场上有闷牌，当前规则禁止比牌", icon: "none" });
+        return;
+      }
       if (code === "NO_TARGET") {
         wx.showToast({ title: "请选择对手", icon: "none" });
         return;
@@ -986,6 +1063,173 @@ Page({
         return;
       }
       wx.showToast({ title: "补码失败", icon: "none" });
+    }
+  },
+
+  openAdjustChips() {
+    if (!this.data.isHost || !this.data.isStarted) return;
+    const targets = this.data.hostAdjustTargets || [];
+    this.setData({
+      showAdjustChips: true,
+      adjustChipTargetId: this.data.adjustChipTargetId || targets[0]?.id || "",
+      adjustChipMode: "add",
+      adjustChipAmount: 0,
+    });
+  },
+
+  closeAdjustChips() {
+    this.setData({ showAdjustChips: false });
+  },
+
+  selectAdjustChipTarget(e) {
+    const id = e.currentTarget.dataset.id;
+    if (!id) return;
+    this.setData({ adjustChipTargetId: id });
+  },
+
+  selectAdjustChipMode(e) {
+    const mode = e.currentTarget.dataset.mode;
+    if (mode !== "add" && mode !== "sub") return;
+    this.setData({ adjustChipMode: mode });
+  },
+
+  onAdjustChipAmountInput(e) {
+    this.setData({ adjustChipAmount: Number(e.detail.value || 0) });
+  },
+
+  async confirmAdjustChips() {
+    if (!this.roomId) return;
+    if (!this.data.isHost) return;
+    const targetId = this.data.adjustChipTargetId;
+    const mode = this.data.adjustChipMode;
+    const amount = Number(this.data.adjustChipAmount || 0);
+    if (!targetId) {
+      wx.showToast({ title: "请选择玩家", icon: "none" });
+      return;
+    }
+    if (mode !== "add" && mode !== "sub") {
+      wx.showToast({ title: "修正方向无效", icon: "none" });
+      return;
+    }
+    if (!Number.isFinite(amount) || amount <= 0 || !Number.isInteger(amount)) {
+      wx.showToast({ title: "请输入正整数", icon: "none" });
+      return;
+    }
+    try {
+      await adjustChips(this.roomId, targetId, mode, amount);
+      wx.showToast({ title: "积分已修正", icon: "success" });
+      this.setData({ showAdjustChips: false });
+    } catch (err) {
+      const code = getErrorCode(err);
+      if (code === "NOT_HOST") {
+        wx.showToast({ title: "仅房主可操作", icon: "none" });
+        return;
+      }
+      if (code === "INVALID_TARGET") {
+        wx.showToast({ title: "玩家不存在", icon: "none" });
+        return;
+      }
+      if (code === "INVALID_MODE" || code === "INVALID_AMOUNT") {
+        wx.showToast({ title: "修正参数无效", icon: "none" });
+        return;
+      }
+      if (code === "STACK_NEGATIVE") {
+        wx.showToast({ title: "扣分后积分不能小于0", icon: "none" });
+        return;
+      }
+      if (code === "NOT_STARTED") {
+        wx.showToast({ title: "房间未开始", icon: "none" });
+        return;
+      }
+      wx.showToast({ title: "积分修正失败", icon: "none" });
+    }
+  },
+
+  openZhjCompareRules() {
+    if (this.data.table?.gameType !== "zhajinhua") return;
+    if (!this.data.isHost || !this.data.isStarted) return;
+    if (this.data.table?.round === "showdown") return;
+    this.setData({ showZhjCompareRules: true });
+  },
+
+  closeZhjCompareRules() {
+    this.setData({ showZhjCompareRules: false });
+  },
+
+  toggleZhjBanCompareWhenDark() {
+    this.setData({ zjhBanCompareWhenDark: !this.data.zjhBanCompareWhenDark });
+  },
+
+  async confirmZhjCompareRules() {
+    if (!this.roomId) return;
+    if (this.data.table?.gameType !== "zhajinhua") return;
+    if (!this.data.isHost) return;
+    try {
+      await setZhjCompareRules(this.roomId, !!this.data.zjhBanCompareWhenDark);
+      wx.showToast({ title: "比牌限制已更新", icon: "success" });
+      this.setData({ showZhjCompareRules: false });
+    } catch (err) {
+      const code = getErrorCode(err);
+      if (code === "NOT_HOST") {
+        wx.showToast({ title: "仅房主可操作", icon: "none" });
+        return;
+      }
+      if (code === "ONLY_ZHJ") {
+        wx.showToast({ title: "仅炸金花支持", icon: "none" });
+        return;
+      }
+      wx.showToast({ title: "设置失败", icon: "none" });
+    }
+  },
+
+  openNextAnteSponsor() {
+    if (this.data.table?.gameType !== "zhajinhua") return;
+    if (!this.data.isHost || !this.data.canStartNextRound) return;
+    this.setData({
+      showNextAnteSponsor: true,
+      nextAnteSponsorTargetId: this.data.table?.zjhNextAnteSponsorId || "",
+    });
+  },
+
+  closeNextAnteSponsor() {
+    this.setData({ showNextAnteSponsor: false });
+  },
+
+  selectNextAnteSponsorTarget(e) {
+    const id = e.currentTarget.dataset.id;
+    this.setData({ nextAnteSponsorTargetId: typeof id === "string" ? id : "" });
+  },
+
+  async confirmNextAnteSponsor() {
+    if (!this.roomId) return;
+    if (this.data.table?.gameType !== "zhajinhua") return;
+    if (!this.data.isHost) return;
+    try {
+      await setNextAnteSponsor(this.roomId, this.data.nextAnteSponsorTargetId || "");
+      wx.showToast({
+        title: this.data.nextAnteSponsorTargetId ? "已设置代下底" : "已清除代下底",
+        icon: "success",
+      });
+      this.setData({ showNextAnteSponsor: false });
+    } catch (err) {
+      const code = getErrorCode(err);
+      if (code === "NOT_HOST") {
+        wx.showToast({ title: "仅房主可操作", icon: "none" });
+        return;
+      }
+      if (code === "NOT_SETTLED") {
+        wx.showToast({ title: "请在收积分后设置", icon: "none" });
+        return;
+      }
+      if (code === "ONLY_ZHJ") {
+        wx.showToast({ title: "仅炸金花支持", icon: "none" });
+        return;
+      }
+      if (code === "INVALID_TARGET") {
+        wx.showToast({ title: "目标玩家无效", icon: "none" });
+        return;
+      }
+      wx.showToast({ title: "设置失败", icon: "none" });
     }
   },
 

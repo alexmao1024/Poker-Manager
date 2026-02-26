@@ -115,9 +115,6 @@ async function setAutoStage(id, enabled) {
   return callRoomAction("setAutoStage", { id, enabled });
 }
 
-async function addMockPlayers(id, count) {
-  return callRoomAction("addMockPlayers", { id, count });
-}
 
 async function updateProfile(id, profile) {
   return callRoomAction("updateProfile", { id, profile });
@@ -176,6 +173,23 @@ async function rebuy(id, amount) {
   return callRoomAction("rebuy", { id, amount });
 }
 
+async function adjustChips(id, targetId, mode, amount, note) {
+  return callRoomAction("adjustChips", { id, targetId, mode, amount, note });
+}
+
+async function setNextAnteSponsor(id, sponsorId) {
+  return callRoomAction("setNextAnteSponsor", { id, sponsorId });
+}
+
+async function setZhjCompareRules(id, banCompareWhenDark) {
+  return callRoomAction("setZhjCompareRules", {
+    id,
+    banCompareWhenDark,
+    // 固定语义：开启“有闷牌禁比”时，默认保留“两人一明一闷可比”的例外。
+    allowHeadsUpMixedCompare: true,
+  });
+}
+
 async function finishRoom(id) {
   return callRoomAction("finishRoom", { id });
 }
@@ -194,13 +208,15 @@ module.exports = {
   leaveRoom,
   startRoom,
   setAutoStage,
-  addMockPlayers,
   updateProfile,
   watchRoom,
   applyAction,
   endRound,
   resetRound,
   rebuy,
+  adjustChips,
+  setNextAnteSponsor,
+  setZhjCompareRules,
   finishRoom,
   reorderPlayers,
   createRoomService,

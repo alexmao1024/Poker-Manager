@@ -5,13 +5,15 @@ const leaveRoomHandler = require("./handlers/leaveRoom");
 const reorderPlayersHandler = require("./handlers/reorderPlayers");
 const setAutoStageHandler = require("./handlers/setAutoStage");
 const setActionTimeoutHandler = require("./handlers/setActionTimeout");
-const addMockPlayersHandler = require("./handlers/addMockPlayers");
 const startRoomHandler = require("./handlers/startRoom");
 const updateProfileHandler = require("./handlers/updateProfile");
 const endRoundHandler = require("./handlers/endRound");
 const resetRoundHandler = require("./handlers/resetRound");
 const finishRoomHandler = require("./handlers/finishRoom");
 const rebuyHandler = require("./handlers/rebuy");
+const adjustChipsHandler = require("./handlers/adjustChips");
+const setNextAnteSponsorHandler = require("./handlers/setNextAnteSponsor");
+const setZhjCompareRulesHandler = require("./handlers/setZhjCompareRules");
 
 function createMapAction(deps) {
   const handlers = {
@@ -22,13 +24,15 @@ function createMapAction(deps) {
     reorderPlayers: reorderPlayersHandler({ reorderPlayers: deps?.reorderPlayers }),
     setAutoStage: setAutoStageHandler({ setAutoStage: deps?.setAutoStage }),
     setActionTimeout: setActionTimeoutHandler({ setActionTimeout: deps?.setActionTimeout }),
-    addMockPlayers: addMockPlayersHandler({ addMockPlayers: deps?.addMockPlayers }),
     startRoom: startRoomHandler({ startRoom: deps?.startRoom }),
     updateProfile: updateProfileHandler({ updateProfile: deps?.updateProfile }),
     endRound: endRoundHandler({ endRoomRound: deps?.endRoomRound }),
     resetRound: resetRoundHandler({ resetRoomRound: deps?.resetRoomRound }),
     finishRoom: finishRoomHandler({ finishRoom: deps?.finishRoom }),
     rebuy: rebuyHandler({ rebuy: deps?.rebuy }),
+    adjustChips: adjustChipsHandler({ adjustChips: deps?.adjustChips }),
+    setNextAnteSponsor: setNextAnteSponsorHandler({ setNextAnteSponsor: deps?.setNextAnteSponsor }),
+    setZhjCompareRules: setZhjCompareRulesHandler({ setZhjCompareRules: deps?.setZhjCompareRules }),
   };
 
   return (action) => handlers[action] || null;
@@ -56,9 +60,6 @@ const mapAction = createMapAction({
   setActionTimeout: () => {
     throw new Error("NOT_CONFIGURED");
   },
-  addMockPlayers: () => {
-    throw new Error("NOT_CONFIGURED");
-  },
   startRoom: () => {
     throw new Error("NOT_CONFIGURED");
   },
@@ -75,6 +76,15 @@ const mapAction = createMapAction({
     throw new Error("NOT_CONFIGURED");
   },
   rebuy: () => {
+    throw new Error("NOT_CONFIGURED");
+  },
+  adjustChips: () => {
+    throw new Error("NOT_CONFIGURED");
+  },
+  setNextAnteSponsor: () => {
+    throw new Error("NOT_CONFIGURED");
+  },
+  setZhjCompareRules: () => {
     throw new Error("NOT_CONFIGURED");
   },
 });
