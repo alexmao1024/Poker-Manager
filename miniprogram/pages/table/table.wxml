@@ -80,8 +80,6 @@
         <text>需跟积分 {{displayCallNeed}}</text>
         <text>剩余积分 {{currentPlayer.stack}}</text>
         <text wx:if="{{table.gameType === 'zhajinhua'}}">{{currentPlayer.seen ? "已看牌" : "闷牌中"}}</text>
-        <text wx:if="{{turnLeft > 0}}">倒计时 {{turnLeft}}s</text>
-        <text wx:elif="{{table.actionTimeoutSec === 0}}">倒计时 关闭</text>
       </view>
       <view wx:if="{{canAct}}">
         <view wx:if="{{table.gameType !== 'zhajinhua'}}">
@@ -95,19 +93,28 @@
             </button>
           </view>
           <view class="raise">
-            <view class="form-row">
-              <text class="form-label">出积分到</text>
-              <input class="form-input" type="number" value="{{raiseTo}}" bindinput="onInputRaise" />
+            <view class="raise-block">
+              <text class="raise-subtitle">快捷出积分（点击后直接确认，按本次出分自动判断跟注/加注）</text>
+              <view class="quick-raise">
+                <view
+                  wx:for="{{quickRaiseOptions}}"
+                  wx:key="amount"
+                  class="quick-btn"
+                  data-amount="{{item.amount}}"
+                  bindtap="onQuickRaise"
+                >
+                  {{item.label}}
+                </view>
+              </view>
             </view>
-            <view class="quick-raise">
-              <view class="quick-btn" data-amount="5" bindtap="onQuickRaise">5</view>
-              <view class="quick-btn" data-amount="10" bindtap="onQuickRaise">10</view>
-              <view class="quick-btn" data-amount="20" bindtap="onQuickRaise">20</view>
-              <view class="quick-btn" data-amount="50" bindtap="onQuickRaise">50</view>
-              <view class="quick-btn" data-amount="100" bindtap="onQuickRaise">100</view>
-              <view class="quick-btn" data-amount="500" bindtap="onQuickRaise">500</view>
+            <view class="raise-block">
+              <text class="raise-subtitle">自定义出积分（到多少注）</text>
+              <view class="form-row">
+                <text class="form-label">出积分到</text>
+                <input class="form-input" type="number" value="{{raiseTo}}" bindinput="onInputRaise" />
+              </view>
+              <button class="btn btn-primary" bindtap="onRaise">按输入出积分</button>
             </view>
-            <button class="btn btn-primary" bindtap="onRaise">出积分</button>
           </view>
         </view>
         <view wx:else>
@@ -127,24 +134,37 @@
             </button>
           </view>
           <view class="raise">
-            <view class="form-row">
-              <text class="form-label">加注到</text>
-              <input class="form-input" type="number" value="{{raiseTo}}" bindinput="onInputRaise" />
+            <view class="raise-block">
+              <text class="raise-subtitle">快捷出分（点击后直接确认，自动判断跟注/加注）</text>
+              <view class="quick-raise">
+                <view
+                  wx:for="{{quickRaiseOptions}}"
+                  wx:key="amount"
+                  class="quick-btn"
+                  data-amount="{{item.amount}}"
+                  bindtap="onQuickRaise"
+                >
+                  {{item.label}}
+                </view>
+              </view>
             </view>
-            <view class="quick-raise">
-              <view class="quick-btn" data-amount="5" bindtap="onQuickRaise">5</view>
-              <view class="quick-btn" data-amount="10" bindtap="onQuickRaise">10</view>
-              <view class="quick-btn" data-amount="20" bindtap="onQuickRaise">20</view>
-              <view class="quick-btn" data-amount="50" bindtap="onQuickRaise">50</view>
-              <view class="quick-btn" data-amount="100" bindtap="onQuickRaise">100</view>
-              <view class="quick-btn" data-amount="200" bindtap="onQuickRaise">200</view>
+            <view class="raise-block">
+              <text class="raise-subtitle">自定义加注</text>
+              <view class="form-row">
+                <text class="form-label">本次追加</text>
+                <input class="form-input" type="number" value="{{raiseTo}}" bindinput="onInputRaise" />
+              </view>
+              <text class="raise-note">
+                快捷按钮表示“本次实际出分”，会自动判断跟注或加注；自定义输入用于加注（实际扣分）。
+                明牌请直接输入你实际要付的分数，系统仅按规则折算为名义注
+              </text>
+              <button class="btn btn-primary" bindtap="onRaise">按输入加注</button>
             </view>
-            <button class="btn btn-primary" bindtap="onRaise">加注</button>
           </view>
         </view>
       </view>
       <view wx:else class="action-wait">
-        {{table.round === "showdown" ? "等待房主收积分" : "等待轮到你"}}
+        {{waitActionText}}
       </view>
     </view>
 
@@ -168,10 +188,15 @@
   <view wx:if="{{showRules}}" class="rules-modal" bindtap="closeRules">
     <view class="rules-card" catchtap="noop">
       <view class="modal-title">牌力说明</view>
-      <image wx:if="{{table.gameType !== 'zhajinhua'}}" class="rules-image" src="/assets/hand-ranks.png" mode="widthFix" />
-      <view wx:else class="rules-text">
-        <view>同花顺 &gt; 豹子 &gt; 同花 &gt; 顺子 &gt; 对子 &gt; 单张</view>
-        <view>特殊牌型：非同花 2-3-5 大于豹子</view>
+      <image
+        wx:if="{{table.gameType !== 'zhajinhua'}}"
+        class="rules-image"
+        src="{{texasRulesImageSrc}}"
+        mode="widthFix"
+      />
+      <image wx:else class="rules-image" src="{{zhjRulesImageSrc}}" mode="widthFix" />
+      <view wx:if="{{table.gameType === 'zhajinhua'}}" class="rules-text">
+        <view>特殊牌型：非同花 2-3-5 大于豹子。</view>
       </view>
       <view class="modal-actions">
         <button class="btn btn-ghost" bindtap="closeRules">关闭</button>
@@ -208,6 +233,11 @@
     <view class="settle-card" catchtap="noop">
       <view class="modal-title">选择收积分玩家</view>
       <view class="settle-hint">每个底池都要选赢家</view>
+      <view class="settle-note">
+        <text>主池：所有未弃牌玩家可争</text>
+        <text>侧池：仅全下后仍可继续下注的玩家可争</text>
+        <text>系统会自动合并可争玩家相同的侧池</text>
+      </view>
       <view class="settle-list">
         <view
           wx:for="{{settlePots}}"

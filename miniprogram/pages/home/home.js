@@ -3,6 +3,10 @@ const { GAME_TYPES, defaultGameRules } = require("../../utils/gameConfig");
 const { buildCreateRoomPayload } = require("../../utils/roomPayloads");
 const { ensureCloudAvatar } = require("../../utils/avatar");
 const { createRoom, joinRoomByCode, getMyRoom, updateProfile } = require("../../utils/roomService");
+const {
+  shouldPromptExistingRoom,
+  buildExistingRoomModalConfig,
+} = require("../../utils/roomEntryGuard");
 const { getOpenId } = require("../../utils/cloud");
 const { createRoomStore } = require("../../stores/roomStore");
 
@@ -180,6 +184,8 @@ Page({
   },
 
   toggleCreate() {
+    const existingRoom = normalizeExistingRoom(this.data.existingRoom);
+    if (existingRoom) return;
     this.setData({
       showCreate: !this.data.showCreate,
       showJoin: false,
@@ -231,12 +237,13 @@ Page({
 
   async createTable() {
     if (this.creatingRoom) return;
-    if (this.data.existingRoom?.id && this.data.existingRoom?.status === "active") {
-      wx.showToast({ title: "已在房间，已进入", icon: "none" });
-      this.openMyRoom();
+    const form = this.data.form;
+    const existingRoom = normalizeExistingRoom(this.data.existingRoom);
+    if (shouldPromptExistingRoom(existingRoom)) {
+      const confirmEnter = await this.promptEnterExistingRoom(existingRoom, form.gameType);
+      if (confirmEnter) this.navigateToRoom(existingRoom);
       return;
     }
-    const form = this.data.form;
     const seatCount = Number(form.seatCount) || 0;
     if (seatCount < 2) {
       wx.showToast({ title: "座位数至少 2", icon: "none" });
@@ -259,13 +266,17 @@ Page({
       );
       if (!table) throw new Error("NO_TABLE");
 
-      this.setData({ showCreate: false });
-      const target = table.status === "lobby" ? "lobby" : "table";
-      wx.navigateTo({ url: `/pages/${target}/${target}?id=${table._id}` });
+      const normalizedTable = normalizeExistingRoom(table);
       if (table.existing) {
-        wx.showToast({ title: "已在房间，已进入", icon: "none" });
+        wx.hideLoading();
+        updateRoomStore(normalizedTable);
+        const confirmEnter = await this.promptEnterExistingRoom(normalizedTable, form.gameType);
+        if (confirmEnter) this.navigateToRoom(normalizedTable);
+        return;
       }
-      updateRoomStore(table);
+      this.setData({ showCreate: false });
+      this.navigateToRoom(normalizedTable);
+      updateRoomStore(normalizedTable);
     } catch (err) {
       const msg = err?.message || err?.errMsg || "";
       if (msg.includes("TIMEOUT")) {
@@ -278,6 +289,25 @@ Page({
       this.creatingRoom = false;
       wx.hideLoading();
     }
+  },
+
+  promptEnterExistingRoom(room, selectedGameType) {
+    if (!shouldPromptExistingRoom(room)) return Promise.resolve(false);
+    const modal = buildExistingRoomModalConfig(room, selectedGameType);
+    return new Promise((resolve) => {
+      wx.showModal({
+        ...modal,
+        success: (res) => resolve(!!res.confirm),
+        fail: () => resolve(false),
+      });
+    });
+  },
+
+  navigateToRoom(room) {
+    const id = room?.id || room?._id;
+    if (!id) return;
+    const target = room.status === "lobby" ? "lobby" : "table";
+    wx.navigateTo({ url: `/pages/${target}/${target}?id=${id}` });
   },
 
   async joinTable() {
@@ -313,15 +343,13 @@ Page({
   openTable(e) {
     const { id, status } = e.currentTarget.dataset;
     if (!id) return;
-    const target = status === "lobby" ? "lobby" : "table";
-    wx.navigateTo({ url: `/pages/${target}/${target}?id=${id}` });
+    this.navigateToRoom({ id, status });
   },
 
   openMyRoom() {
     const room = this.data.existingRoom;
-    if (!room || !room.id) return;
-    const target = room.status === "lobby" ? "lobby" : "table";
-    wx.navigateTo({ url: `/pages/${target}/${target}?id=${room.id}` });
+    if (!room || !(room.id || room._id)) return;
+    this.navigateToRoom(room);
   },
 
   async onChooseAvatar(e) {

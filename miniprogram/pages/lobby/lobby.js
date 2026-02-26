@@ -6,8 +6,8 @@ const {
   leaveRoom,
   reorderPlayers,
   startRoom,
+  addMockPlayers,
   finishRoom,
-  setActionTimeout,
 } = require("../../utils/roomService");
 const { getOpenId } = require("../../utils/cloud");
 const {
@@ -64,11 +64,11 @@ Page({
     openId: "",
     profileName: "",
     reorderList: [],
+    reorderDragEnabledId: "",
     reorderAreaHeight: 0,
     reorderItemHeight: 88,
     reorderPadding: 12,
     showHostGuide: false,
-    timeoutDraft: 60,
   },
 
   async onLoad(query) {
@@ -218,9 +218,6 @@ Page({
       wx.redirectTo({ url: `/pages/table/table?id=${this.roomId}` });
       return;
     }
-    const timeoutSec = Number.isFinite(Number(room.actionTimeoutSec))
-      ? Math.max(0, Number(room.actionTimeoutSec))
-      : 60;
     const avatarErrorIds = this.avatarErrorIds || new Set();
     const avatarErrorSources = this.avatarErrorSources || new Map();
     const pendingAvatarIds = [];
@@ -281,7 +278,6 @@ Page({
       canStart,
       reorderList,
       reorderAreaHeight: reorderList.length * itemHeight + padding * 2,
-      timeoutDraft: this.timeoutEditing ? this.data.timeoutDraft : timeoutSec,
     });
     this.loadAvatarUrls(pendingAvatarIds);
     this.maybeShowHostGuide(isHost);
@@ -309,6 +305,7 @@ Page({
     this.reorderDragging = dragId;
     this.isDragging = true;
     this.reorderDirty = false;
+    this.setData({ reorderDragEnabledId: dragId });
   },
 
   onReorderChange(e) {
@@ -337,6 +334,7 @@ Page({
   onReorderEnd() {
     this.reorderDragging = "";
     this.isDragging = false;
+    this.setData({ reorderDragEnabledId: "" });
     const itemHeight = this.data.reorderItemHeight || 88;
     const padding = this.data.reorderPadding || 0;
     const snapped = (this.data.reorderList || []).map((item, index) => ({
@@ -446,38 +444,6 @@ Page({
     unique.forEach((id) => loading.delete(id));
   },
 
-  onReorderBlock() {},
-
-  onTimeoutFocus() {
-    this.timeoutEditing = true;
-  },
-
-  async onTimeoutBlur(e) {
-    this.timeoutEditing = false;
-    if (!this.data.isHost || !this.roomId) return;
-    const value = Number(e.detail.value || 0);
-    const nextValue = Number.isFinite(value) ? Math.max(0, Math.min(600, value)) : 60;
-    if (nextValue === Number(this.data.room?.actionTimeoutSec)) {
-      this.setData({ timeoutDraft: nextValue });
-      return;
-    }
-    try {
-      await setActionTimeout(this.roomId, nextValue);
-      this.setData({ timeoutDraft: nextValue });
-    } catch (err) {
-      const code = this.getErrorCode(err);
-      if (code === "NOT_HOST") {
-        wx.showToast({ title: "仅房主可修改", icon: "none" });
-        return;
-      }
-      if (code === "ROOM_STARTED") {
-        wx.showToast({ title: "已开局，无法修改", icon: "none" });
-        return;
-      }
-      wx.showToast({ title: "更新失败", icon: "none" });
-    }
-  },
-
   noop() {},
 
   maybeShowHostGuide(isHost) {
@@ -547,6 +513,42 @@ Page({
         return;
       }
       wx.showToast({ title: "开始失败", icon: "none" });
+    }
+  },
+
+  async addMockPlayersForTest() {
+    if (!this.roomId) return;
+    if (!this.data.isHost) {
+      wx.showToast({ title: "仅房主可添加", icon: "none" });
+      return;
+    }
+    const maxSeats = Number(this.data.room?.maxSeats || 0);
+    const currentSeats = (this.data.playersView || []).length;
+    const seatsLeft = maxSeats > 0 ? Math.max(0, maxSeats - currentSeats) : 0;
+    if (seatsLeft <= 0) {
+      wx.showToast({ title: "座位已满", icon: "none" });
+      return;
+    }
+    const requestCount = Math.min(3, seatsLeft);
+    try {
+      const res = await addMockPlayers(this.roomId, requestCount);
+      const added = Number(res?.addedCount || requestCount);
+      wx.showToast({ title: `已添加${added}个模拟人`, icon: "none" });
+    } catch (err) {
+      const code = this.getErrorCode(err);
+      if (code === "NOT_HOST") {
+        wx.showToast({ title: "仅房主可添加", icon: "none" });
+        return;
+      }
+      if (code === "ROOM_STARTED") {
+        wx.showToast({ title: "已开局，无法添加", icon: "none" });
+        return;
+      }
+      if (code === "ROOM_FULL") {
+        wx.showToast({ title: "座位已满", icon: "none" });
+        return;
+      }
+      wx.showToast({ title: "添加失败", icon: "none" });
     }
   },
 

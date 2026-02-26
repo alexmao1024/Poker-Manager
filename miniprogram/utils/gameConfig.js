@@ -8,7 +8,7 @@ const defaultGameRules = {
     blinds: { sb: 10, bb: 20 },
     stack: 2000,
     maxSeats: 9,
-    actionTimeoutSec: 60,
+    actionTimeoutSec: 0,
   },
   zhj: {
     baseBet: 10,

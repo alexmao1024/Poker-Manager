@@ -219,7 +219,12 @@
 .segmented-btn {
   flex: 1;
   height: 64rpx;
-  line-height: 64rpx;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-sizing: border-box;
   border-radius: 14rpx;
   font-size: 24rpx;
   background: rgba(12, 18, 15, 0.6);

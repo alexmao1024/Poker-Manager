@@ -15,5 +15,6 @@ assert.equal(payload.gameType, "zhajinhua");
 assert.equal(payload.maxSeats, 6);
 assert.equal(payload.stack, 2000);
 assert.equal(payload.gameRules.baseBet, 10);
+assert.equal(payload.gameRules.maxSeats, 6);
 assert.equal(payload.gameRules.maxRounds, 20);
 assert.equal(payload.gameRules.compareAllowedAfter, 4);

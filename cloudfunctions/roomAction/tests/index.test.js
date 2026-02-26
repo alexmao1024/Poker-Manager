@@ -9,6 +9,7 @@ const actions = [
   "reorderPlayers",
   "setAutoStage",
   "setActionTimeout",
+  "addMockPlayers",
   "startRoom",
   "updateProfile",
   "endRound",

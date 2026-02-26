@@ -23,7 +23,7 @@
 
     <view class="action-panel fade-in delay-1">
       <view class="action-stack">
-        <button class="btn btn-home btn-home-primary" bindtap="toggleCreate">
+        <button class="btn btn-home btn-home-primary" bindtap="toggleCreate" disabled="{{!!existingRoom}}">
           {{showCreate ? "收起表单" : "新建房间"}}
         </button>
         <button class="btn btn-home btn-home-secondary" bindtap="toggleJoin">
@@ -98,7 +98,9 @@
           <input class="form-input" type="number" value="{{form.zhjCompareAfter}}" bindinput="onInputZhjCompareAfter" />
         </view>
       </view>
-      <button class="btn btn-home btn-home-primary form-submit" bindtap="createTable">进入房间</button>
+      <button class="btn btn-home btn-home-primary form-submit" bindtap="createTable" disabled="{{!!existingRoom}}">
+        进入房间
+      </button>
     </view>
 
     <view wx:if="{{showJoin}}" class="panel form-panel fade-in delay-2">

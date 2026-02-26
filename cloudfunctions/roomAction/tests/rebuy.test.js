@@ -6,6 +6,11 @@ assert.equal(
   500
 );
 
+assert.equal(
+  validateRebuy({ settled: true, gameType: "texas", stack: 2000 }, 500),
+  500
+);
+
 assert.throws(
   () => validateRebuy({ settled: false, gameType: "texas", stack: 2000 }, 100),
   /NOT_SETTLED/

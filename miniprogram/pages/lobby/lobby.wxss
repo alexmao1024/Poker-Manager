@@ -17,14 +17,6 @@
   width: 100%;
 }
 
-.auto-stage-row {
-  margin-top: 12rpx;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  color: var(--ink-200);
-  font-size: 22rpx;
-}
 
 .auto-stage-status {
   color: var(--ink-400);
@@ -39,16 +31,6 @@
   font-size: 22rpx;
 }
 
-.timeout-input {
-  width: 140rpx;
-  text-align: right;
-  border: 1px solid rgba(227, 197, 116, 0.25);
-  border-radius: 12rpx;
-  padding: 6rpx 10rpx;
-  color: var(--ink-100);
-  background: rgba(9, 14, 12, 0.55);
-  font-size: 22rpx;
-}
 
 .header-actions {
   display: flex;
@@ -89,9 +71,19 @@
   grid-template-columns: repeat(2, 6rpx);
   grid-template-rows: repeat(3, 6rpx);
   gap: 4rpx;
-  padding: 4rpx 2rpx;
+  width: 64rpx;
+  height: 64rpx;
+  padding: 0;
+  justify-content: center;
+  align-content: center;
+  justify-items: center;
+  align-items: center;
   opacity: 0.7;
   z-index: 3;
+  border-radius: 12rpx;
+  background: rgba(227, 197, 116, 0.06);
+  border: 1px solid rgba(227, 197, 116, 0.12);
+  flex: 0 0 auto;
 }
 
 .drag-handle .dot {
@@ -101,11 +93,3 @@
   background: rgba(227, 197, 116, 0.8);
 }
 
-.drag-mask {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 60rpx;
-  z-index: 2;
-}

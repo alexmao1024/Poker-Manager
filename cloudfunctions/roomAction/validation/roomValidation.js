@@ -1,6 +1,6 @@
 const defaultConfig = {
   blinds: { sb: 10, bb: 20 },
-  actionTimeoutSec: 60,
+  actionTimeoutSec: 0,
   stack: 2000,
 };
 

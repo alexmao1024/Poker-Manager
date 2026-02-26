@@ -224,7 +224,7 @@ function applyZhjAction({ table, type, raiseTo, targetId, result, expected, open
   const activeForTurn = players.filter((item) => item.status === "active");
   const turnExpiresAt = calcTurnExpiresAt(
     now,
-    Number(table.actionTimeoutSec || 0),
+    0,
     nextRound,
     activeForTurn.length > 0
   );
@@ -287,7 +287,7 @@ function startZhjRound({ table, now, dealerIndex }) {
   const round = "betting";
   const turnExpiresAt = calcTurnExpiresAt(
     now,
-    Number(table.actionTimeoutSec || 0),
+    0,
     round,
     players.some((player) => player.status === "active")
   );

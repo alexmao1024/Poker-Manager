@@ -13,7 +13,7 @@ const roundOrder = ["preflop", "flop", "turn", "river", "showdown"];
 const defaultConfig = {
   blinds: { sb: 10, bb: 20 },
   stack: 2000,
-  actionTimeoutSec: 60,
+  actionTimeoutSec: 0,
 };
 
 function sanitizeAvatar(avatar) {
@@ -103,9 +103,7 @@ function normalizeBlinds(input) {
   };
 }
 
-function normalizeTimeoutSec(input) {
-  const value = Number(input);
-  if (Number.isFinite(value) && value >= 0) return value;
+function normalizeTimeoutSec() {
   return defaultConfig.actionTimeoutSec;
 }
 
@@ -165,7 +163,11 @@ async function createRoom(payload, profile, openId) {
       return { _id: existing.data[0]._id, ...existing.data[0], existing: true };
     }
   }
-  const normalized = normalizeGameRules(payload?.gameType, payload?.gameRules || payload);
+  const rulesInput = {
+    ...(payload || {}),
+    ...(payload?.gameRules || {}),
+  };
+  const normalized = normalizeGameRules(payload?.gameType, rulesInput);
   const maxSeats = normalized.rules.maxSeats;
   if (maxSeats < 2) {
     throw new Error("INVALID_PLAYERS");
@@ -177,10 +179,7 @@ async function createRoom(payload, profile, openId) {
     isZhj
       ? { sb: normalized.rules.baseBet, bb: normalized.rules.baseBet }
       : normalizeBlinds(normalized.rules.blinds);
-  const actionTimeoutSec =
-    isZhj
-      ? defaultConfig.actionTimeoutSec
-      : normalizeTimeoutSec(normalized.rules.actionTimeoutSec);
+  const actionTimeoutSec = defaultConfig.actionTimeoutSec;
   const players = [
     buildPlayer(profile?.name || "房主", safeAvatar, openId, stack, "active"),
   ];
@@ -768,11 +767,69 @@ async function setActionTimeout(id, actionTimeoutSec, openId) {
   }
   await db.collection(ROOMS).doc(id).update({
     data: {
-      actionTimeoutSec: normalizeTimeoutSec(actionTimeoutSec),
+      actionTimeoutSec: defaultConfig.actionTimeoutSec,
       updatedAt: now,
     },
   });
   return { ok: true };
+}
+
+async function addMockPlayers(id, count, openId) {
+  if (!openId) {
+    throw new Error("NO_OPENID");
+  }
+  const now = Date.now();
+  const requested = Number(count);
+  const batchSize = Number.isFinite(requested)
+    ? Math.max(1, Math.min(5, Math.floor(requested)))
+    : 3;
+  let addedCount = 0;
+
+  await db.runTransaction(async (tx) => {
+    const doc = await tx.collection(ROOMS).doc(id).get();
+    const table = doc.data;
+    if (!table) {
+      throw new Error("NOT_FOUND");
+    }
+    if (table.status !== "lobby") {
+      throw new Error("ROOM_STARTED");
+    }
+    if (table.hostOpenId && table.hostOpenId !== openId) {
+      throw new Error("NOT_HOST");
+    }
+
+    const players = (table.players || []).map((player) => ({ ...player }));
+    const maxSeats = Number(table.maxSeats || 0);
+    const seatsLeft = maxSeats > 0 ? Math.max(0, maxSeats - players.length) : 0;
+    if (seatsLeft <= 0) {
+      throw new Error("ROOM_FULL");
+    }
+    const stackRaw = Number(table.stack);
+    const stack = Number.isFinite(stackRaw) && stackRaw > 0 ? stackRaw : defaultConfig.stack;
+    addedCount = Math.min(batchSize, seatsLeft);
+
+    const nameSet = new Set(players.map((player) => String(player.name || "")));
+    let serial = 1;
+    while (addedCount > 0) {
+      const mockName = `模拟${serial}`;
+      serial += 1;
+      if (nameSet.has(mockName)) continue;
+      nameSet.add(mockName);
+      players.push(buildPlayer(mockName, "", openId, stack, "active"));
+      addedCount -= 1;
+    }
+
+    const realAdded = players.length - (table.players || []).length;
+    await tx.collection(ROOMS).doc(id).update({
+      data: {
+        players,
+        updatedAt: now,
+      },
+    });
+    addedCount = realAdded;
+  });
+
+  return { ok: true, addedCount };
 }
 
 async function startRoom(id, openId) {
@@ -990,70 +1047,10 @@ async function endRoomRound(id, expected, openId, winnersByPot) {
     if (!potSelections.length) {
       throw new Error("NO_WINNERS");
     }
-
-    const contributions = players.map((player) => ({
-      id: player.id,
-      total: (player.handBet || 0) + (player.bet || 0),
-      status: player.status,
-    }));
-    const levels = Array.from(
-      new Set(contributions.map((item) => item.total).filter((amount) => amount > 0))
-    ).sort((a, b) => a - b);
-    if (!levels.length) {
-      throw new Error("NO_POT");
-    }
-
-    const payouts = new Map();
-    let prevLevel = 0;
-    for (let potIndex = 0; potIndex < levels.length; potIndex += 1) {
-      const level = levels[potIndex];
-      const participants = contributions.filter((item) => item.total >= level);
-      const potAmount = (level - prevLevel) * participants.length;
-      if (potAmount <= 0) {
-        prevLevel = level;
-        continue;
-      }
-      const eligibleIds = new Set(
-        participants
-          .filter((item) => item.status !== "fold" && item.status !== "out")
-          .map((item) => item.id)
-      );
-      const selection = Array.isArray(potSelections[potIndex]) ? potSelections[potIndex] : [];
-      const potWinners = players
-        .filter((player) => eligibleIds.has(player.id) && selection.includes(player.id))
-        .map((player) => player.id);
-      const uniqueWinners = Array.from(new Set(potWinners));
-      if (!uniqueWinners.length) {
-        throw new Error("NO_POT_WINNER");
-      }
-      const share = Math.floor(potAmount / uniqueWinners.length);
-      let remainder = potAmount - share * uniqueWinners.length;
-      for (const winnerId of uniqueWinners) {
-        const bonus = remainder > 0 ? 1 : 0;
-        const current = payouts.get(winnerId) || 0;
-        payouts.set(winnerId, current + share + bonus);
-        remainder -= bonus;
-      }
-      prevLevel = level;
-    }
-    players.forEach((player) => {
-      const reward = payouts.get(player.id) || 0;
-      player.stack += reward;
-      player.bet = 0;
-      player.handBet = 0;
-      if (player.left) {
-        player.status = "fold";
-        return;
-      }
-      if (player.stack <= 0) {
-        player.status = "out";
-      } else {
-        player.status = "active";
-      }
-    });
+    const nextPlayers = settlePot(players, potSelections);
 
     const updates = {
-      players,
+      players: nextPlayers,
       pot: 0,
       settled: true,
       turnExpiresAt: null,
@@ -1255,6 +1252,7 @@ const mapAction = createMapAction({
   reorderPlayers,
   setAutoStage,
   setActionTimeout,
+  addMockPlayers,
   startRoom,
   updateProfile,
   endRoomRound,

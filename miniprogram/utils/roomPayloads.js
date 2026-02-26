@@ -15,6 +15,7 @@ function buildCreateRoomPayload(form) {
       maxSeats,
       stack: buyIn,
       gameRules: {
+        maxSeats,
         baseBet,
         buyIn,
         maxRounds,

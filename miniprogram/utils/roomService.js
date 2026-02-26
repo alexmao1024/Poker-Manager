@@ -115,8 +115,8 @@ async function setAutoStage(id, enabled) {
   return callRoomAction("setAutoStage", { id, enabled });
 }
 
-async function setActionTimeout(id, actionTimeoutSec) {
-  return callRoomAction("setActionTimeout", { id, actionTimeoutSec });
+async function addMockPlayers(id, count) {
+  return callRoomAction("addMockPlayers", { id, count });
 }
 
 async function updateProfile(id, profile) {
@@ -125,17 +125,39 @@ async function updateProfile(id, profile) {
 
 function watchRoom(id, handlers) {
   const db = getDb();
-  return db.collection(ROOMS).doc(id).watch({
+  let isClosed = false;
+  const isCancelledWatchError = (err) => {
+    const text = `${err?.message || ""} ${err?.errMsg || ""}`.toLowerCase();
+    if (!text) return false;
+    return (
+      text.includes("oncancellederror") ||
+      (text.includes("initwatchfail") && text.includes("closed")) ||
+      text.includes("current state (closed)")
+    );
+  };
+
+  const watcher = db.collection(ROOMS).doc(id).watch({
     onChange: (snapshot) => {
+      if (isClosed) return;
       const doc = snapshot.docs?.[0];
       if (handlers?.onChange) {
         handlers.onChange(doc || null);
       }
     },
     onError: (err) => {
+      if (isClosed) return;
+      if (isCancelledWatchError(err)) return;
       if (handlers?.onError) handlers.onError(err);
     },
   });
+  if (watcher && typeof watcher.close === "function") {
+    const rawClose = watcher.close.bind(watcher);
+    watcher.close = (...args) => {
+      isClosed = true;
+      return rawClose(...args);
+    };
+  }
+  return watcher;
 }
 
 async function applyAction(id, type, raiseTo, expected, targetId, result) {
@@ -172,8 +194,8 @@ module.exports = {
   leaveRoom,
   startRoom,
   setAutoStage,
+  addMockPlayers,
   updateProfile,
-  setActionTimeout,
   watchRoom,
   applyAction,
   endRound,

@@ -30,18 +30,6 @@
         <view class="section-title">座位列表</view>
         <view class="tag">{{isHost ? "拖拽排序" : "等待开局"}}</view>
       </view>
-      <view class="auto-stage-row">
-        <text>行动超时（秒）</text>
-        <input
-          class="timeout-input"
-          type="number"
-          value="{{timeoutDraft}}"
-          placeholder="60"
-          disabled="{{!isHost}}"
-          bindfocus="onTimeoutFocus"
-          bindblur="onTimeoutBlur"
-        />
-      </view>
       <movable-area
         class="reorder-area"
         style="height: {{reorderAreaHeight}}px; padding-top: {{reorderPadding}}px; padding-bottom: {{reorderPadding}}px;"
@@ -52,14 +40,13 @@
           class="lobby-reorder-item"
           direction="vertical"
           y="{{item.y}}"
-          disabled="{{!isHost}}"
+          disabled="{{!isHost || reorderDragEnabledId !== item.id}}"
           data-index="{{index}}"
           bindchange="onReorderChange"
           bindtouchend="onReorderEnd"
           bindtouchcancel="onReorderEnd"
         >
           <view class="player-card">
-            <view class="drag-mask" catchtouchstart="onReorderBlock" catchtouchmove="onReorderBlock"></view>
             <view class="row">
               <view class="player-left">
                 <view
@@ -105,12 +92,20 @@
         </movable-view>
       </movable-area>
       <view class="lobby-hint">
-        {{isHost ? "按住左侧手柄拖动排序" : "等待房主开始"}}
+        {{isHost ? "仅左侧手柄可拖动排序，其他区域可上下滑动页面" : "等待房主开始"}}
       </view>
     </view>
 
     <view class="panel control fade-in delay-2">
       <view class="lobby-control">
+        <button
+          wx:if="{{isHost}}"
+          class="btn btn-ghost"
+          bindtap="addMockPlayersForTest"
+          disabled="{{playersView.length >= (room.maxSeats || playersView.length)}}"
+        >
+          添加模拟人（+3）
+        </button>
         <button class="btn btn-primary" bindtap="startRoom" disabled="{{!canStart}}">开始房间</button>
         <button wx:if="{{isHost}}" class="btn btn-ghost" bindtap="endRoom">结束房间</button>
         <button wx:else class="btn btn-ghost" bindtap="leaveRoom">退出房间</button>

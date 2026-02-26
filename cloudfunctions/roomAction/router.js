@@ -5,6 +5,7 @@ const leaveRoomHandler = require("./handlers/leaveRoom");
 const reorderPlayersHandler = require("./handlers/reorderPlayers");
 const setAutoStageHandler = require("./handlers/setAutoStage");
 const setActionTimeoutHandler = require("./handlers/setActionTimeout");
+const addMockPlayersHandler = require("./handlers/addMockPlayers");
 const startRoomHandler = require("./handlers/startRoom");
 const updateProfileHandler = require("./handlers/updateProfile");
 const endRoundHandler = require("./handlers/endRound");
@@ -21,6 +22,7 @@ function createMapAction(deps) {
     reorderPlayers: reorderPlayersHandler({ reorderPlayers: deps?.reorderPlayers }),
     setAutoStage: setAutoStageHandler({ setAutoStage: deps?.setAutoStage }),
     setActionTimeout: setActionTimeoutHandler({ setActionTimeout: deps?.setActionTimeout }),
+    addMockPlayers: addMockPlayersHandler({ addMockPlayers: deps?.addMockPlayers }),
     startRoom: startRoomHandler({ startRoom: deps?.startRoom }),
     updateProfile: updateProfileHandler({ updateProfile: deps?.updateProfile }),
     endRound: endRoundHandler({ endRoomRound: deps?.endRoomRound }),
@@ -52,6 +54,9 @@ const mapAction = createMapAction({
     throw new Error("NOT_CONFIGURED");
   },
   setActionTimeout: () => {
+    throw new Error("NOT_CONFIGURED");
+  },
+  addMockPlayers: () => {
     throw new Error("NOT_CONFIGURED");
   },
   startRoom: () => {

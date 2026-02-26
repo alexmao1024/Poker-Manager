@@ -11,3 +11,4 @@ const texas = normalizeGameRules("texas", { blinds: { sb: 5, bb: 10 }, stack: 15
 assert.equal(texas.gameType, "texas");
 assert.equal(texas.rules.blinds.bb, 10);
 assert.equal(texas.rules.stack, 1500);
+assert.equal(texas.rules.actionTimeoutSec, 0);

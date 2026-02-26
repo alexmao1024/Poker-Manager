@@ -14,6 +14,11 @@ const { isCloudFile, fetchCloudAvatarUrls, normalizeCloudFileId } = require("../
 const { createRoomStore } = require("../../stores/roomStore");
 
 const DEFAULT_RAISE = 20;
+// 填入云存储 fileID 后，牌力说明会优先使用云端图片；留空则回退本地 assets。
+const TEXAS_RULES_IMAGE_FILE_ID =
+  "cloud://cloud1-1gzq30qb675a8cf8.636c-cloud1-1gzq30qb675a8cf8-1394977863/avatars/hand-ranks.png";
+const ZHJ_RULES_IMAGE_FILE_ID =
+  "cloud://cloud1-1gzq30qb675a8cf8.636c-cloud1-1gzq30qb675a8cf8-1394977863/avatars/zjh-hand-ranks.png";
 const roomStore = createRoomStore();
 
 function calcCurrentBet(players) {
@@ -30,6 +35,46 @@ function getZhjRoundLabel(table) {
   }
   const roundCount = Number.isFinite(table?.zjhRoundCount) ? table.zjhRoundCount : 1;
   return `第${roundCount}轮`;
+}
+
+function buildQuickRaiseOptions({ isZhj, currentBet, callNeed, baseBet, seen }) {
+  const presets = isZhj ? [5, 10, 20, 50, 100, 200] : [5, 10, 20, 50, 100, 500];
+  if (!isZhj) {
+    const actualCallNeed = Math.max(0, Math.ceil(Number(callNeed || 0)));
+    let values = presets.filter((amount) => amount >= actualCallNeed);
+    if (actualCallNeed > 0 && !values.includes(actualCallNeed)) {
+      values.unshift(actualCallNeed);
+    }
+    return Array.from(new Set(values))
+      .sort((a, b) => a - b)
+      .slice(0, 6)
+      .map((amount) => ({ amount, label: `出${amount}` }));
+  }
+
+  const factor = seen ? 2 : 1;
+  const actualCallNeed = Math.max(0, Math.ceil(Number(callNeed || 0) * factor));
+  let actualMinRaise = Math.max(0, Math.ceil((Number(callNeed || 0) + Number(baseBet || 0)) * factor));
+  if (seen && actualMinRaise % 2 !== 0) {
+    actualMinRaise += 1;
+  }
+
+  let values = presets.slice();
+  if (seen) {
+    values = values.filter((amount) => amount % 2 === 0);
+  }
+  values = values.filter((amount) => amount >= Math.max(1, actualMinRaise));
+
+  if (actualCallNeed > 0 && (!seen || actualCallNeed % 2 === 0) && !values.includes(actualCallNeed)) {
+    values.unshift(actualCallNeed);
+  }
+  if (actualMinRaise > 0 && !values.includes(actualMinRaise)) {
+    values.unshift(actualMinRaise);
+  }
+
+  return Array.from(new Set(values))
+    .sort((a, b) => a - b)
+    .slice(0, 6)
+    .map((amount) => ({ amount, label: `出${amount}` }));
 }
 
 function statusLabel(status, isTurn) {
@@ -59,33 +104,54 @@ function buildSidePots(players, prevPots) {
     new Set(contributions.map((item) => item.total).filter((amount) => amount > 0))
   ).sort((a, b) => a - b);
   let prevLevel = 0;
-  const result = [];
-  const previous = Array.isArray(prevPots) ? prevPots : [];
+  const mergedPots = [];
   for (let potIndex = 0; potIndex < levels.length; potIndex += 1) {
     const level = levels[potIndex];
     const participants = contributions.filter((item) => item.total >= level);
     const potAmount = (level - prevLevel) * participants.length;
+    prevLevel = level;
     if (potAmount <= 0) {
-      prevLevel = level;
       continue;
     }
     const eligible = participants
       .filter((item) => item.status !== "fold" && item.status !== "out")
-      .map((item) => ({ id: item.id, name: item.name, selected: false }));
+      .map((item) => ({ id: item.id, name: item.name }));
+    const lastPot = mergedPots[mergedPots.length - 1];
+    if (!eligible.length) {
+      if (lastPot) {
+        lastPot.amount += potAmount;
+      }
+      continue;
+    }
+    const signature = eligible
+      .map((item) => item.id)
+      .sort()
+      .join("|");
+    if (lastPot && lastPot.signature === signature) {
+      lastPot.amount += potAmount;
+      continue;
+    }
+    mergedPots.push({ amount: potAmount, eligible, signature });
+  }
+
+  const result = [];
+  const previous = Array.isArray(prevPots) ? prevPots : [];
+  for (let potIndex = 0; potIndex < mergedPots.length; potIndex += 1) {
+    const pot = mergedPots[potIndex];
     const prev = previous[potIndex];
+    const eligibleIds = new Set(pot.eligible.map((player) => player.id));
     let winners = Array.isArray(prev?.winners)
-      ? prev.winners.filter((id) => eligible.some((player) => player.id === id))
+      ? prev.winners.filter((id) => eligibleIds.has(id))
       : [];
-    if (!winners.length && eligible.length === 1) {
-      winners = [eligible[0].id];
+    if (!winners.length && pot.eligible.length === 1) {
+      winners = [pot.eligible[0].id];
     }
     const selectedSet = new Set(winners);
-    const eligibleWithSelection = eligible.map((player) => ({
+    const eligibleWithSelection = pot.eligible.map((player) => ({
       ...player,
       selected: selectedSet.has(player.id),
     }));
-    result.push({ amount: potAmount, eligible: eligibleWithSelection, winners });
-    prevLevel = level;
+    result.push({ amount: pot.amount, eligible: eligibleWithSelection, winners });
   }
   return result;
 }
@@ -116,6 +182,7 @@ Page({
     displayCallNeed: 0,
     roundLabel: "",
     raiseTo: 0,
+    quickRaiseOptions: [],
     stageActionLabel: "发三张",
     displayPot: 0,
     dealerPlayer: { name: "-" },
@@ -146,8 +213,10 @@ Page({
     showRebuy: false,
     rebuyAmount: 0,
     rebuyLimit: 0,
+    waitActionText: "",
+    texasRulesImageSrc: TEXAS_RULES_IMAGE_FILE_ID || "/assets/hand-ranks.png",
+    zhjRulesImageSrc: ZHJ_RULES_IMAGE_FILE_ID || "/assets/zjh-hand-ranks.png",
     showHostGuide: false,
-    turnLeft: 0,
   },
 
   async onLoad(query) {
@@ -209,7 +278,6 @@ Page({
       this.unsubscribeRoomStore();
       this.unsubscribeRoomStore = null;
     }
-    this.clearTurnCountdown();
   },
 
   onHide() {
@@ -218,7 +286,6 @@ Page({
       this.roomWatcher = null;
     }
     this.wasHidden = true;
-    this.clearTurnCountdown();
   },
 
   startWatch() {
@@ -296,10 +363,17 @@ Page({
     const callNeed = Math.max(currentBet - (currentPlayer.bet || 0), 0);
     const displayCallNeed = isZhj && currentPlayer.seen ? callNeed * 2 : callNeed;
     const raiseTo = isZhj
-      ? currentBet + baseBet
+      ? (currentPlayer.seen ? (callNeed + baseBet) * 2 : callNeed + baseBet)
       : currentBet > 0
         ? currentBet + DEFAULT_RAISE
         : DEFAULT_RAISE;
+    const quickRaiseOptions = buildQuickRaiseOptions({
+      isZhj,
+      currentBet,
+      callNeed,
+      baseBet,
+      seen: !!currentPlayer.seen,
+    });
     const dealerIndex = players.length ? (table.dealerIndex || 0) % players.length : 0;
     const smallBlindIndex = players.length ? (dealerIndex + 1) % players.length : 0;
     const bigBlindIndex = players.length ? (dealerIndex + 2) % players.length : 0;
@@ -415,6 +489,22 @@ Page({
       ? Number(table.gameRules?.rebuyLimit || table.gameRules?.buyIn || 0)
       : Number(table.stack || 0);
     const canRebuy = isStarted && table.settled && !!selfPlayer;
+    let waitActionText = "等待轮到你";
+    if (table.round === "showdown") {
+      if (table.settled) {
+        if (canRebuy) {
+          waitActionText = isHost
+            ? "本手已结算，可补码。你可开始下一回合。"
+            : "本手已结算，可补码。等待房主开始下一回合。";
+        } else {
+          waitActionText = isHost
+            ? "本手已结算。你可开始下一回合。"
+            : "本手已结算。等待房主开始下一回合。";
+        }
+      } else {
+        waitActionText = "等待房主收积分。";
+      }
+    }
     const showCompare = this.data.showCompare && canCompare;
     const compareTargetId =
       compareTargets.some((player) => player.id === this.data.compareTargetId)
@@ -437,6 +527,7 @@ Page({
       displayCallNeed,
       roundLabel: roomStatusLabel,
       raiseTo,
+      quickRaiseOptions,
       stageActionLabel: stageActionLabel(table.round),
       displayPot,
       dealerPlayer: players[dealerIndex] || { name: "-" },
@@ -462,12 +553,11 @@ Page({
       canRebuy,
       showRebuy,
       rebuyLimit,
+      waitActionText,
       autoStage,
     });
-    this.setupTurnCountdown(table, turnKey);
     this.loadAvatarUrls(pendingAvatarIds);
     this.maybeShowHostGuide(isHost);
-    this.maybeAutoResetRound(isHost, table);
 
     if (!this.hasSynced) {
       this.hasSynced = true;
@@ -501,82 +591,6 @@ Page({
     this.lastTurnKey = turnKey;
   },
 
-  clearTurnCountdown() {
-    if (this.turnCountdownTimer) {
-      clearInterval(this.turnCountdownTimer);
-      this.turnCountdownTimer = null;
-    }
-    this.turnCountdownKey = "";
-  },
-
-  setupTurnCountdown(table, turnKey) {
-    const expiresAt = Number(table?.turnExpiresAt || 0);
-    if (!expiresAt || table?.round === "showdown") {
-      this.clearTurnCountdown();
-      if (this.data.turnLeft !== 0) {
-        this.setData({ turnLeft: 0 });
-      }
-      return;
-    }
-    const countdownKey = `${turnKey}_${expiresAt}`;
-    if (this.turnCountdownKey === countdownKey) return;
-    this.clearTurnCountdown();
-    this.turnCountdownKey = countdownKey;
-
-    const tick = () => {
-      const left = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
-      if (left !== this.data.turnLeft) {
-        this.setData({ turnLeft: left });
-      }
-      if (left <= 0) {
-        this.clearTurnCountdown();
-        this.handleTurnTimeout(turnKey);
-      }
-    };
-
-    tick();
-    this.turnCountdownTimer = setInterval(tick, 500);
-  },
-
-  async handleTurnTimeout(turnKey) {
-    if (!this.data.isStarted) return;
-    if (this.data.table?.round === "showdown") return;
-    if (!(this.data.isHost || this.data.canAct)) return;
-    if (this.timeoutHandlingKey === turnKey) return;
-    this.timeoutHandlingKey = turnKey;
-    try {
-      this.isTimeoutRequest = true;
-      await this.applyAction("timeout");
-    } finally {
-      this.isTimeoutRequest = false;
-      setTimeout(() => {
-        if (this.timeoutHandlingKey === turnKey) {
-          this.timeoutHandlingKey = "";
-        }
-      }, 1200);
-    }
-  },
-
-  async maybeAutoResetRound(isHost, table) {
-    if (!this.pendingAutoReset) return;
-    if (!isHost) {
-      this.pendingAutoReset = false;
-      return;
-    }
-    if (table.round !== "showdown" || !table.settled) return;
-    this.pendingAutoReset = false;
-    const expected = {
-      round: table.round,
-      settled: table.settled,
-    };
-    try {
-      await resetRound(this.roomId, expected, this.data.profileName);
-    } catch (err) {
-      // Ignore auto reset failures to avoid blocking.
-    }
-  },
-
-
   onInputRaise(e) {
     this.setData({ raiseTo: Number(e.detail.value || 0) });
   },
@@ -585,7 +599,22 @@ Page({
     if (!this.data.canAct) return;
     const amount = Number(e.currentTarget.dataset.amount || 0);
     if (!amount) return;
+    const isZhj = this.data.table?.gameType === "zhajinhua";
+    const actualCallNeed = Number(isZhj ? this.data.displayCallNeed : this.data.callNeed || 0);
+    if (actualCallNeed > 0 && amount === actualCallNeed) {
+      wx.showModal({
+        title: "确认快捷出分",
+        content: [`本次出分（实际扣分）：${amount}。`, "", "动作：跟注。"].join("\n"),
+        confirmText: "确认",
+        success: (res) => {
+          if (!res.confirm) return;
+          this.applyAction("call");
+        },
+      });
+      return;
+    }
     this.setData({ raiseTo: amount });
+    this.onRaise({ raiseInputOverride: amount, fromQuick: true, quickActualMode: !isZhj });
   },
 
   onFold() {
@@ -609,29 +638,72 @@ Page({
     this.applyAction(action);
   },
 
-  onRaise() {
+  onRaise(options = {}) {
     if (!this.data.canAct) return;
     const currentBet = Number(this.data.currentBet || 0);
-    const raiseTo = Number(this.data.raiseTo || 0);
+    const raiseInput = Number.isFinite(Number(options.raiseInputOverride))
+      ? Number(options.raiseInputOverride)
+      : Number(this.data.raiseTo || 0);
     const isZhj = this.data.table?.gameType === "zhajinhua";
+    const isTexasQuickActual = !isZhj && !!options.quickActualMode;
     const baseBet = Number(this.data.table?.gameRules?.baseBet || 0);
-    const minRaise = isZhj ? currentBet + baseBet : currentBet;
-    if (raiseTo < minRaise) {
-      const title = isZhj ? "加注不能低于当前注 + 底注" : "出积分不能低于当前最高积分";
+    const callNeed = Number(this.data.callNeed || 0);
+    const currentPlayerBet = Number(this.data.currentPlayer?.bet || 0);
+    const seen = !!this.data.currentPlayer?.seen;
+    const minRaise = isZhj
+      ? seen
+        ? (callNeed + baseBet) * 2
+        : callNeed + baseBet
+      : isTexasQuickActual
+        ? Math.max(callNeed + 1, 1)
+        : currentBet;
+    if (isZhj && seen && raiseInput % 2 !== 0) {
+      wx.showToast({ title: "明牌追加请输偶数", icon: "none" });
+      return;
+    }
+    if (raiseInput < minRaise) {
+      let title = "出积分不能低于当前最高积分";
+      if (isZhj) {
+        title = "追加不能低于 跟注 + 底注";
+      } else if (isTexasQuickActual) {
+        title = "快捷出分超过跟注才算加注";
+      }
       wx.showToast({ title, icon: "none" });
       return;
     }
-    const currentPlayerBet = Number(this.data.currentPlayer?.bet || 0);
-    const delta = Math.max(raiseTo - currentPlayerBet, 0);
-    const actualDelta = isZhj && this.data.currentPlayer?.seen ? delta * 2 : delta;
-    const deltaLabel = isZhj ? actualDelta : delta;
+    const requestRaiseTo = isZhj
+      ? currentPlayerBet + (seen ? raiseInput / 2 : raiseInput)
+      : isTexasQuickActual
+        ? currentPlayerBet + raiseInput
+        : raiseInput;
+    const delta = Math.max(requestRaiseTo - currentPlayerBet, 0);
+    const modalContent = isZhj
+      ? [
+          `本次出分（实际扣分）：${raiseInput}。`,
+          `加后你的本轮注：${requestRaiseTo}。`,
+          seen ? `明牌按规则折算为名义注：${delta}。` : "闷牌：实际扣分 = 名义注。",
+        ].join("\n")
+      : isTexasQuickActual
+        ? [
+            `本次出积分：${raiseInput}。`,
+            `加后你的本轮注：${requestRaiseTo}。`,
+            `动作：加注。`,
+          ].join("\n")
+        : `出积分到 ${requestRaiseTo}（追加 ${delta}）？`;
+    const title = isZhj
+      ? options.fromQuick
+        ? "确认快捷加注"
+        : "确认加注"
+      : options.fromQuick
+        ? "确认快捷出积分"
+        : "确认出积分";
     wx.showModal({
-      title: isZhj ? "确认加注" : "确认出积分",
-      content: `${isZhj ? "加注到" : "出积分到"} ${raiseTo}（追加 ${deltaLabel}）？`,
+      title,
+      content: modalContent,
       confirmText: "确认",
       success: (res) => {
         if (!res.confirm) return;
-        this.applyAction("raise");
+        this.applyAction("raise", { raiseTo: requestRaiseTo });
       },
     });
   },
@@ -709,12 +781,6 @@ Page({
       await applyRoomAction(this.roomId, type, raiseTo, expected, targetId, result);
     } catch (err) {
       const code = getErrorCode(err);
-      if (
-        this.isTimeoutRequest &&
-        (code === "TURN_CHANGED" || code === "ROUND_CHANGED" || code === "NOT_TIMEOUT")
-      ) {
-        return;
-      }
       if (code === "TURN_CHANGED") {
         wx.showToast({ title: "轮到别人了", icon: "none" });
         return;
@@ -782,9 +848,6 @@ Page({
       }
       if (code === "NO_STACK") {
         wx.showToast({ title: "积分不足", icon: "none" });
-        return;
-      }
-      if (code === "NOT_TIMEOUT") {
         return;
       }
       const fallback = err?.errMsg || err?.message || "操作失败";
@@ -984,9 +1047,6 @@ Page({
     try {
       const winnersByPot = pots.map((pot) => pot.winners || []);
       await endRound(this.roomId, expected, winnersByPot);
-      if (this.data.isHost) {
-        this.pendingAutoReset = true;
-      }
       this.setData({ showSettle: false, settlePots: [] });
     } catch (err) {
       const code = getErrorCode(err);

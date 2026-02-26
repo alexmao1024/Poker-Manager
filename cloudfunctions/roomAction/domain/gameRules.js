@@ -3,7 +3,7 @@ const defaultRules = {
     blinds: { sb: 10, bb: 20 },
     stack: 2000,
     maxSeats: 9,
-    actionTimeoutSec: 60,
+    actionTimeoutSec: 0,
   },
   zhj: {
     baseBet: 10,
@@ -46,7 +46,7 @@ function normalizeGameRules(gameType, input) {
       blinds: { sb: Number(blinds.sb), bb: Number(blinds.bb) },
       stack,
       maxSeats,
-      actionTimeoutSec: Number(input?.actionTimeoutSec || defaultRules.texas.actionTimeoutSec),
+      actionTimeoutSec: defaultRules.texas.actionTimeoutSec,
     },
   };
 }
